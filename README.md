@@ -182,6 +182,21 @@ reserved for MCP JSON-RPC; diagnostics go to stderr.
 6. Confirm the registration and test one paid request in the Explorer before
 	announcing availability.
 
+ProofGate includes dry-run-first on-chain registration tooling based on the
+official Telegraph example and current Base Sepolia Diamond:
+
+```powershell
+$env:PROOFGATE_MINER_YAML_URL="https://proofgate-six.vercel.app/miner.yaml"
+& "C:\Program Files\nodejs\npm.cmd" run registration:check
+& "C:\Program Files\nodejs\npm.cmd" run registration:submit
+```
+
+The check fetches the exact hosted bytes, validates the descriptor, computes
+its SHA-256, verifies wallet ETH/USDC, and sends nothing. Submit repeats those
+checks, simulates `registerMiner`, waits for confirmation, parses
+`MinerRegistered`, and reads the record back. The known chat-exposed burner
+address is hard-blocked from registration.
+
 The repository does not claim that a Miner is registered or deployed. Those
 steps require a public origin, portal access, and private credentials.
 
