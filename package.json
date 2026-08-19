@@ -18,6 +18,7 @@
     "mcp:dev": "tsx mcp/server.ts",
     "mcp:build": "esbuild mcp/server.ts --bundle --packages=external --platform=node --format=esm --target=node20 --outfile=dist/mcp/server.js",
     "mcp:smoke": "tsx scripts/mcp-smoke.ts",
+    "docs:capture": "node scripts/capture-readme-screenshots.mjs",
     "registration:check": "tsx scripts/register-miner.ts",
     "registration:submit": "tsx scripts/register-miner.ts --submit"
   },
