@@ -84,6 +84,7 @@ issue, chat, screenshot, or client-side environment variable.
 | `PROOFGATE_AUDIT_FILE` | Override the local JSONL ledger path | `data/proofgate-audit.jsonl` |
 | `UPSTASH_REDIS_REST_URL` | Persistent audit/rate-limit Redis endpoint | unset |
 | `UPSTASH_REDIS_REST_TOKEN` | Redis REST bearer token | unset |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Equivalent names injected by Vercel Marketplace | unset |
 | `PROOFGATE_AUDIT_REDIS_KEY` | Redis list used for the audit chain | `proofgate:audit:v1` |
 | `PHISHTANK_APP_KEY` | Enables PhishTank evidence | unset |
 | `GOOGLE_SAFE_BROWSING_API_KEY` | Enables Google Safe Browsing evidence | unset |

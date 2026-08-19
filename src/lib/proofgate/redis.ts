@@ -11,13 +11,16 @@ export class RedisConfigurationError extends Error {
 }
 
 export function redisConfiguration(): RedisConfiguration | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = (
+    process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
+  )?.replace(/\/$/, "");
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
   if (!url && !token) return null;
   if (!url || !token) {
     throw new RedisConfigurationError(
-      "Set both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.",
+      "Set both Redis REST URL and token variables.",
     );
   }
 
