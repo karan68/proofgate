@@ -252,6 +252,8 @@ export function telegraphRuntimeStatus() {
     node_url: nodeUrl(),
     payment_network: BASE_SEPOLIA,
     payment_ready: Boolean(key && /^0x[0-9a-fA-F]{64}$/.test(key)),
+    operator_access_required:
+      process.env.NODE_ENV === "production" || Boolean(process.env.PROOFGATE_API_KEY),
     max_payment_atomic: maxPaymentAtomic().toString(),
   };
 }

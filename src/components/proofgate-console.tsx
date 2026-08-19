@@ -40,6 +40,7 @@ interface NetworkPayload {
   };
   runtime: {
     payment_ready: boolean;
+    operator_access_required: boolean;
   };
 }
 
@@ -127,28 +128,32 @@ export function ProofGateConsole() {
     const operatorHeaders = accessKey
       ? { Authorization: `Bearer ${accessKey}` }
       : undefined;
-    const [networkResponse, auditResponse] = await Promise.allSettled([
+    const networkResponse = await Promise.resolve(
       fetch("/api/network", { cache: "no-store" }).then(responseJson<NetworkPayload>),
-      fetch("/api/audit?limit=12", {
+    );
+    startTransition(() => setNetwork(networkResponse));
+
+    if (networkResponse.runtime.operator_access_required && !accessKey) {
+      startTransition(() => setAuditLocked(true));
+      return;
+    }
+
+    const auditResponse = await fetch("/api/audit?limit=12", {
         cache: "no-store",
         headers: operatorHeaders,
       }).then(async (response) => {
-        if (response.status === 401 || response.status === 503) {
-          return { locked: true, payload: null };
-        }
-        return {
-          locked: false,
-          payload: await responseJson<AuditPayload>(response),
-        };
-      }),
-    ]);
+      if (response.status === 401 || response.status === 503) {
+        return { locked: true, payload: null };
+      }
+      return {
+        locked: false,
+        payload: await responseJson<AuditPayload>(response),
+      };
+    });
 
     startTransition(() => {
-      if (networkResponse.status === "fulfilled") setNetwork(networkResponse.value);
-      if (auditResponse.status === "fulfilled") {
-        setAuditLocked(auditResponse.value.locked);
-        if (auditResponse.value.payload) setAudit(auditResponse.value.payload);
-      }
+      setAuditLocked(auditResponse.locked);
+      if (auditResponse.payload) setAudit(auditResponse.payload);
     });
   }
 
