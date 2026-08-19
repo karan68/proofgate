@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "proofgate": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/dist/mcp/server.js"],
+      "env": {
+        "TELEGRAPH_NODE_URL": "https://devnode.telegraphprotocol.com"
+      }
+    }
+  }
+}
