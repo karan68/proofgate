@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/karan68/proofgate.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
