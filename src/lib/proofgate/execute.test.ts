@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const undiciFetch = vi.hoisted(() => vi.fn());
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici")>();
+  return { ...actual, fetch: undiciFetch };
+});
+
 import { executeGuardedTarget, TargetExecutionError } from "./execute";
 
 const publicLookup = async () => ["93.184.216.34"];
@@ -18,10 +24,30 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  undiciFetch.mockReset();
   vi.unstubAllEnvs();
 });
 
 describe("executeGuardedTarget", () => {
+  it("adapts the x402 Request wrapper into a pinned Undici request", async () => {
+    undiciFetch.mockResolvedValue(
+      new Response("ok", { headers: { "content-type": "text/plain" } }),
+    );
+
+    const result = await executeGuardedTarget("https://example.com", {
+      lookup: publicLookup,
+    });
+
+    expect(result).toMatchObject({ status: 200, preview: "ok" });
+    expect(undiciFetch).toHaveBeenCalledOnce();
+    expect(undiciFetch.mock.calls[0][0]).toBe("https://example.com/");
+    expect(undiciFetch.mock.calls[0][1]).toMatchObject({
+      method: "GET",
+      redirect: "manual",
+    });
+    expect(undiciFetch.mock.calls[0][1].dispatcher).toBeDefined();
+  });
+
   it("performs a bounded GET and sanitizes its text preview", async () => {
     const baseFetch = fetcher(
       new Response("safe\u0000 response", {

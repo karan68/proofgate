@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 import {
   decodePaymentResponseHeader,
@@ -30,18 +32,42 @@ const minerDiscoverySchema = z.object({
   miners: z.array(minerSchema),
 });
 
-const engineMetadataSchema = z
+const integrationSchema = z
   .object({
-    miner_id: z.string().optional(),
-    miner_name: z.string().optional(),
-    intent: z.string().optional(),
-    reasoning: z.string().optional(),
-    signal_hash: z.string().optional(),
-    cost_usd: z.number().optional(),
-    duration_ms: z.number().optional(),
-    timestamp: z.string().optional(),
+    id: z.union([z.string(), z.number()]).transform(String),
+    slug: z.string(),
+    name: z.string(),
+    endpoints: z.array(
+      z.object({
+        path: z.string(),
+        method: z.string(),
+      }),
+    ),
+    input_schema: z
+      .object({
+        properties: z.record(z.string(), z.unknown()).optional(),
+      })
+      .passthrough()
+      .nullish(),
+    output_schema: z
+      .object({
+        properties: z.record(z.string(), z.unknown()).optional(),
+      })
+      .passthrough()
+      .nullish(),
+    signal_mapping: z
+      .object({
+        confidence_field: z.string().optional(),
+        label_field: z.string().optional(),
+      })
+      .passthrough()
+      .nullish(),
+    supported_intents: z.array(z.string()),
+    min_price_usdc: z.number().nonnegative(),
   })
   .passthrough();
+
+type UrlScanIntegration = z.infer<typeof integrationSchema>;
 
 export type UrlScanMiner = z.infer<typeof minerSchema>;
 
@@ -189,6 +215,54 @@ export async function discoverUrlScanMiners(options: {
   };
 }
 
+async function selectUrlScanIntegration(
+  fetcher: typeof fetch,
+  baseUrl?: string,
+): Promise<UrlScanIntegration & { scan_path: string }> {
+  const response = await fetcher(
+    `${nodeUrl(baseUrl)}/miner-dispatcher/integrations`,
+    {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    },
+  );
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw new TelegraphRequestError(response.status, errorDetail(body));
+  }
+
+  const integrations = z.array(integrationSchema).parse(body);
+  const candidates = integrations
+    .flatMap((integration) => {
+      const endpoint = integration.endpoints.find(
+        (candidate) =>
+          candidate.method.toUpperCase() === "POST" && candidate.path === "/scan",
+      );
+      const compatible =
+        integration.supported_intents.includes("URL_SCAN") &&
+        endpoint &&
+        BigInt(Math.round(integration.min_price_usdc)) <= maxPaymentAtomic() &&
+        "url" in (integration.input_schema?.properties ?? {}) &&
+        "verdict" in (integration.output_schema?.properties ?? {}) &&
+        "confidence" in (integration.output_schema?.properties ?? {}) &&
+        integration.signal_mapping?.label_field === "verdict" &&
+        integration.signal_mapping?.confidence_field === "confidence";
+      return compatible ? [{ ...integration, scan_path: endpoint.path }] : [];
+    })
+    .filter((integration) => integration.slug !== "proofgate-url-intelligence")
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+
+  const selected = candidates[0];
+  if (!selected) {
+    throw new TelegraphRequestError(
+      503,
+      "No live URL_SCAN Miner declares a synchronous verdict/confidence contract.",
+    );
+  }
+  return selected;
+}
+
 export async function askTelegraphUrlSafety(
   target: string,
   options: {
@@ -198,26 +272,27 @@ export async function askTelegraphUrlSafety(
 ): Promise<TelegraphScanResult> {
   const normalized = normalizeTargetUrl(target);
   const fetcher = options.fetcher ?? createCappedEvmPaymentFetch();
-  const response = await fetcher(`${nodeUrl(options.baseUrl)}/engine/v1/ask`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
+  const selected = await selectUrlScanIntegration(fetcher, options.baseUrl);
+  const startedAt = Date.now();
+  const response = await fetcher(
+    `${nodeUrl(options.baseUrl)}/miner-dispatcher/v1/${selected.id}${selected.scan_path}`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: normalized.url }),
+      signal: AbortSignal.timeout(45_000),
+      cache: "no-store",
     },
-    body: JSON.stringify({
-      query: `Scan this URL and decide whether it is safe or malicious: ${normalized.url}`,
-      context: { url: normalized.url },
-    }),
-    signal: AbortSignal.timeout(45_000),
-    cache: "no-store",
-  });
+  );
   const body = await responseBody(response);
 
   if (!response.ok) {
     throw new TelegraphRequestError(response.status, errorDetail(body));
   }
 
-  const metadata = engineMetadataSchema.parse(body);
   const policy = evaluatePolicy(body);
   const settlementHeader = response.headers.get("payment-response");
   let settlement: unknown | null = null;
@@ -233,16 +308,17 @@ export async function askTelegraphUrlSafety(
     target_url: normalized.url,
     decision: policy.decision,
     finding: policy.finding,
-    miner_id: metadata.miner_id ?? null,
-    miner_name: metadata.miner_name ?? null,
-    intent: metadata.intent ?? null,
-    routing_reason: metadata.reasoning ?? null,
-    signal_hash: metadata.signal_hash ?? null,
-    cost_usd: metadata.cost_usd ?? null,
-    duration_ms: metadata.duration_ms ?? null,
-    timestamp: metadata.timestamp ?? new Date().toISOString(),
+    miner_id: selected.id,
+    miner_name: selected.name,
+    intent: "URL_SCAN",
+    routing_reason:
+      "Selected from the live URL_SCAN catalog using its declared synchronous verdict/confidence contract.",
+    signal_hash: `sha256:${responseHash(body)}`,
+    cost_usd: selected.min_price_usdc / 1_000_000,
+    duration_ms: Date.now() - startedAt,
+    timestamp: new Date().toISOString(),
     settlement,
-    raw_result: metadata.result ?? body,
+    raw_result: body,
   };
 }
 
@@ -256,4 +332,8 @@ export function telegraphRuntimeStatus() {
       process.env.NODE_ENV === "production" || Boolean(process.env.PROOFGATE_API_KEY),
     max_payment_atomic: maxPaymentAtomic().toString(),
   };
+}
+
+function responseHash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }

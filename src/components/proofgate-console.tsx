@@ -235,7 +235,7 @@ export function ProofGateConsole() {
           <div className="route-map reveal-two" aria-label="ProofGate request path">
             <div className="route-node active"><Search size={18} /><span>Intent</span><strong>URL_SCAN</strong></div>
             <div className="route-line"><span /></div>
-            <div className="route-node"><Network size={18} /><span>Route</span><strong>Ranked Miner</strong></div>
+            <div className="route-node"><Network size={18} /><span>Route</span><strong>Compatible Miner</strong></div>
             <div className="route-line"><span /></div>
             <div className="route-node"><ShieldCheck size={18} /><span>Policy</span><strong>Act / withhold</strong></div>
           </div>

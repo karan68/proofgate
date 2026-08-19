@@ -55,7 +55,7 @@ export function createProofGateServer(): McpServer {
     "proofgate_scan",
     {
       description:
-        "Pay for one auto-routed Telegraph URL_SCAN inference, normalize the selected Miner's evidence, apply ProofGate policy, and append a tamper-evident audit record. Does not visit the target URL.",
+        "Select a compatible Miner from Telegraph's live URL_SCAN catalog, pay for one x402 inference, apply ProofGate policy, and append a tamper-evident audit record. Does not visit the target URL.",
       inputSchema: z.object({
         url: z.string().url().max(2_048).describe("Public HTTP or HTTPS URL to scan"),
       }),

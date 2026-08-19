@@ -18,7 +18,7 @@ A scanner reports a score. ProofGate enforces a boundary:
 flowchart LR
   A[Agent action] --> G[ProofGate]
   G -->|x402 payment| T[Telegraph URL_SCAN]
-  T --> M[Ranked Miner]
+  T --> M[Compatible Miner]
   M --> P{Local policy}
   P -->|ALLOW| E[DNS-pinned GET or HEAD]
   P -->|WARN or BLOCK| W[Withhold action]
@@ -34,7 +34,8 @@ submitted target URL.
 ## Current behavior
 
 - Discovers the live Telegraph `URL_SCAN` Miner pool.
-- Routes paid scans through Telegraph's `/engine/v1/ask` endpoint.
+- Selects a compatible Miner from Telegraph's live `URL_SCAN` catalog and pays
+  its dispatcher endpoint through x402.
 - Filters x402 requirements by network and maximum amount before signing.
 - Treats malicious evidence as `BLOCK` and uncertain evidence as `WARN`.
 - Executes only public HTTP(S) targets after `ALLOW`.
@@ -211,6 +212,15 @@ steps require a public origin, portal access, and private credentials.
 & "C:\Program Files\nodejs\npm.cmd" run mcp:smoke
 & "C:\Program Files\nodejs\npm.cmd" audit
 ```
+
+Live Base Sepolia proof recorded on 2026-08-19:
+
+- Telegraph catalog selected `URL Sentinel` (Miner `5001`) for `URL_SCAN`.
+- The Miner returned `safe` with `0.90` confidence; policy returned `ALLOW`.
+- x402 settled exactly `0.01` USDC to Telegraph's Diamond in
+  [transaction `0xfb8e...6585`](https://sepolia.basescan.org/tx/0xfb8e49d1eee8d13e7b18707942bbd85f5a99f69dbe41e285ed8fbd21ee316585).
+- The guarded, DNS-pinned request then returned HTTP 200 with 559 bytes from
+  `https://example.com/`, and ProofGate appended an `ACTION` audit record.
 
 See [SECURITY.md](SECURITY.md) for trust boundaries and residual risks.
 

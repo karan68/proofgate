@@ -43,6 +43,28 @@ function paymentRequired(amount: string, network?: string) {
   });
 }
 
+function compatibleIntegration() {
+  return {
+    id: "5001",
+    slug: "url-sentinel",
+    name: "URL Sentinel",
+    endpoints: [{ path: "/scan", method: "POST" }],
+    input_schema: { properties: { url: { type: "string" } } },
+    output_schema: {
+      properties: {
+        verdict: { type: "string" },
+        confidence: { type: "number" },
+      },
+    },
+    signal_mapping: {
+      label_field: "verdict",
+      confidence_field: "confidence",
+    },
+    supported_intents: ["URL_SCAN"],
+    min_price_usdc: 10_000,
+  };
+}
+
 beforeEach(() => {
   vi.stubEnv("TELEGRAPH_EVM_PRIVATE_KEY", `0x${"11".repeat(32)}`);
 });
@@ -83,25 +105,21 @@ describe("Telegraph adapter", () => {
     });
   });
 
-  it("builds an auto-routed URL_SCAN request and normalizes the response", async () => {
+  it("selects a compatible URL_SCAN Miner and normalizes its response", async () => {
+    let requestUrl: string | null = null;
     let requestBody: unknown;
-    const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/miner-dispatcher/integrations")) {
+        return Response.json([compatibleIntegration()]);
+      }
+      requestUrl = String(input);
       requestBody = JSON.parse(String(init?.body));
       return new Response(
         JSON.stringify({
-          miner_id: "42",
-          miner_name: "proofgate-miner",
-          intent: "URL_SCAN",
-          reasoning: "URL safety request",
-          signal_hash: "0xabc",
-          cost_usd: 0.01,
-          duration_ms: 120,
-          result: {
-            verdict: "malicious",
-            malicious: true,
-            confidence: 0.98,
-            reason: "Known phishing URL.",
-          },
+          verdict: "malicious",
+          malicious: true,
+          confidence: 0.98,
+          reason: "Known phishing URL.",
         }),
         { status: 200 },
       );
@@ -111,27 +129,58 @@ describe("Telegraph adapter", () => {
       fetcher: fetcher as typeof fetch,
     });
 
+    expect(requestUrl).toBe(
+      "https://devnode.telegraphprotocol.com/miner-dispatcher/v1/5001/scan",
+    );
     expect(requestBody).toEqual({
-      query: "Scan this URL and decide whether it is safe or malicious: https://example.com/path",
-      context: { url: "https://example.com/path" },
+      url: "https://example.com/path",
     });
     expect(result).toMatchObject({
       decision: "BLOCK",
-      miner_id: "42",
-      signal_hash: "0xabc",
+      miner_id: "5001",
+      miner_name: "URL Sentinel",
+      intent: "URL_SCAN",
+      cost_usd: 0.01,
       finding: { verdict: "malicious" },
     });
+    expect(result.signal_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
   it("does not turn a failed Telegraph response into a verdict", async () => {
-    const fetcher = async () =>
-      new Response(JSON.stringify({ error: "routing unavailable" }), { status: 503 });
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/miner-dispatcher/integrations")) {
+        return Response.json([compatibleIntegration()]);
+      }
+      return new Response(JSON.stringify({ error: "routing unavailable" }), {
+        status: 503,
+      });
+    };
 
     await expect(
       askTelegraphUrlSafety("https://example.com", {
         fetcher: fetcher as typeof fetch,
       }),
     ).rejects.toEqual(new TelegraphRequestError(503, "routing unavailable"));
+  });
+
+  it("refuses before dispatch when no synchronous URL_SCAN Miner is compatible", async () => {
+    const incompatible = {
+      ...compatibleIntegration(),
+      output_schema: { properties: { uuid: { type: "string" } } },
+    };
+    const fetcher = vi.fn(async () => Response.json([incompatible]));
+
+    await expect(
+      askTelegraphUrlSafety("https://example.com", {
+        fetcher: fetcher as typeof fetch,
+      }),
+    ).rejects.toEqual(
+      new TelegraphRequestError(
+        503,
+        "No live URL_SCAN Miner declares a synchronous verdict/confidence contract.",
+      ),
+    );
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("signs an exact Base Sepolia requirement at the configured cap", async () => {

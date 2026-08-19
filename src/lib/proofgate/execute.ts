@@ -132,10 +132,18 @@ export async function executeGuardedTarget(
   const baseFetch =
     options.baseFetch ??
     ((async (resource, init) => {
-      const response = await undiciFetch(resource as string | URL, {
-        ...(init as UndiciRequestInit),
+      const request = new Request(resource, init);
+      const body = ["GET", "HEAD"].includes(request.method)
+        ? undefined
+        : new Uint8Array(await request.arrayBuffer());
+      const response = await undiciFetch(request.url, {
+        method: request.method,
+        headers: Object.fromEntries(request.headers),
+        body,
+        redirect: request.redirect,
+        signal: request.signal,
         dispatcher: agent,
-      });
+      } satisfies UndiciRequestInit);
       return response as unknown as Response;
     }) as typeof fetch);
   const fetchWithPayment = createCappedEvmPaymentFetch({
