@@ -14,7 +14,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "mcp:dev": "tsx mcp/server.ts",
     "mcp:build": "esbuild mcp/server.ts --bundle --packages=external --platform=node --format=esm --target=node20 --outfile=dist/mcp/server.js",
     "mcp:smoke": "tsx scripts/mcp-smoke.ts",
