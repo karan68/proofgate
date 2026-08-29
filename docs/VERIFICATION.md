@@ -4,7 +4,7 @@ This document records what was tested, how it was tested, and which evidence is
 live, historical, simulated, or still pending. It exists to prevent screenshots,
 fixtures, mocks, and dry runs from being mistaken for production transactions.
 
-Last updated: **2026-08-19**
+Last updated: **2026-08-29**
 
 ## Evidence Classes
 
@@ -22,11 +22,10 @@ At the end of verification:
 
 - Public production reports `payment_ready: false`.
 - The production payer private key is not configured.
-- The fresh registration wallet has `0.0001` Base Sepolia ETH and `1` testnet
-  USDC.
-- The fresh wallet transaction count is zero.
-- `registration:check` reports `ready_to_register: true`.
-- `registration:submit` has not been run.
+- The fresh registration wallet retained `1` testnet USDC and made exactly two
+  outgoing transactions: initial registration and the correcting update.
+- Replacement registration `310` is active for `URL_SCAN`.
+- Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
 - No payment or transaction was initiated while preparing README screenshots.
 
 ## Automated Baseline
@@ -69,7 +68,7 @@ Verified results:
 | MCP ESM bundle | passed |
 | MCP v2 initialization and tool listing | passed |
 | npm audit | 0 vulnerabilities |
-| GitHub Actions | [run 32233491431: success](https://github.com/karan68/proofgate/actions/runs/32233491431) |
+| GitHub Actions | [schema-fix run 33263101514: success](https://github.com/karan68/proofgate/actions/runs/33263101514) |
 
 ## Test Coverage by Module
 
@@ -270,7 +269,7 @@ The receipt was independently read through Base Sepolia RPC and the ERC-20
 `Transfer` log decoded. It was not accepted solely because Telegraph returned a
 settlement header.
 
-## Registration Readiness
+## Registration and Track 1 Submission
 
 Fresh wallet public address:
 
@@ -278,7 +277,7 @@ Fresh wallet public address:
 0x2589cd4A7B7301A5973faf636b21166D0c21B67d
 ```
 
-Read-only state at verification time:
+The read-only preflight initially reported:
 
 ```text
 Base Sepolia ETH: 0.0001
@@ -294,14 +293,61 @@ descriptor_checks: all true
 ready_to_register: true
 ```
 
-The YAML hash observed by the dry check was:
+The initial YAML hash observed by the dry check was:
 
 ```text
 0x06a74048c626035b1a17966a625f53aa380eeabd07e1a74503d839cb2ed538d7
 ```
 
-This is readiness evidence, not registration evidence. No `MinerRegistered`
-transaction or registration ID is claimed.
+Registration `309` was then submitted in
+[transaction `0x6524...4fcc`](https://sepolia.basescan.org/tx/0x6524ef379a6b92a491e859d39dc7b3578da45861a2e1340f67b30ec8e4624fcc).
+Telegraph's current validator rejected that first descriptor because every
+`on_chain.fields.*` mapping now requires a description. The emitted YAML was
+corrected, tested, deployed, and re-hashed as:
+
+```text
+0x9841d385976c89586f4c80bee0cecfd8ded75cba605b9f921d779376460e01d4
+```
+
+The deployed Diamond confirmed the exact function
+`updateMiner(uint256,string,bytes32,address,uint256,string[])`. The update
+simulated successfully and was sent in
+[transaction `0xd866...38a8`](https://sepolia.basescan.org/tx/0xd86632828b733200eb3ae3306df315d2be5e47eb8af0077f5fa690f538fa38a8).
+It emitted `MinerDeregistered(309)`, `MinerRegistered(310)`,
+`IntentRegistered(310)`, and `MinerUpdated(309,310)`. The replacement record
+was independently read back with:
+
+```text
+registration ID: 310
+activation status: active
+intent: URL_SCAN
+slug: proofgate-url-intelligence
+YAML hash: 9841d385...460e01d4
+rejection reason: null
+```
+
+The Track 1 portal then accepted a fresh EIP-191 challenge signature and the
+exact 2,841-byte YAML file. The saved response was independently confirmed via
+the portal's "My Submissions" API:
+
+```text
+submission ID: 6a930a4aae9ddfbc70a760d9
+track: miner
+item ID: 310
+item verified: true
+submission status: verified
+saved: true
+X username: karanyadav38450
+created: 2026-08-29T16:35:22.708Z
+```
+
+The verified item also carried the informational string
+`Ownership could not be determined` and `githubUrl: null`. Those fields are
+recorded rather than interpreted: the portal independently returned
+`item.verified: true`, overall `status: verified`, and `saved: true`.
+
+The fresh wallet retained `1` testnet USDC. These registration transactions
+used Base Sepolia test ETH gas only; production x402 payment remains disabled.
 
 ## Screenshot Provenance
 
@@ -334,8 +380,7 @@ documentation fixtures.
 ProofGate does **not** claim that:
 
 - the public Vercel deployment currently performs paid scans
-- the fresh wallet has made any transaction
-- the Miner is registered on-chain
+- registration guarantees routing volume or leaderboard placement
 - deterministic WARN/BLOCK screenshots are live network results
 - every safe verdict guarantees a harmless destination
 - missing provider keys count as clean evidence

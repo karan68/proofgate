@@ -5,6 +5,7 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.3.1-000000)](https://nextjs.org/)
 [![MCP v2](https://img.shields.io/badge/MCP-v2.0.0-62a7ff)](https://modelcontextprotocol.io/)
 [![Base Sepolia](https://img.shields.io/badge/network-Base%20Sepolia-0052ff)](https://sepolia.basescan.org/)
+[![Telegraph Track 1](https://img.shields.io/badge/Telegraph%20Track%201-verified-54df90)](https://submissions.telegraphprotocol.com/mine)
 
 **A pre-execution firewall for autonomous agents.** ProofGate buys a URL safety
 verdict through Telegraph, applies a local fail-closed policy, and performs the
@@ -15,12 +16,13 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 - **Miner declaration:** https://proofgate-six.vercel.app/miner.yaml
 - **Source:** https://github.com/karan68/proofgate
 - **Verified settlement:** [0.01 USDC on Base Sepolia](https://sepolia.basescan.org/tx/0xfb8e49d1eee8d13e7b18707942bbd85f5a99f69dbe41e285ed8fbd21ee316585)
+- **Track 1 submission:** verified Miner registration `310`
 
 > **Current production safety state:** the public deployment intentionally has
 > no payer key (`payment_ready: false`). Discovery, health, the ProofGate Miner,
 > Miner YAML, and the console are live. Paid guard execution remains disabled
-> until an operator explicitly enables it. The Miner registration transaction
-> is prepared and dry-run verified, but has not been submitted.
+> until an operator explicitly enables it. Miner registration `310` is active
+> on Base Sepolia and the Track 1 portal submission is saved and verified.
 
 ![ProofGate live production console showing four URL_SCAN Miners and a locked operator ledger](./public/screenshots/production-console-desktop.png)
 
@@ -346,19 +348,35 @@ npm run registration:check   # read-only: fetch, hash, validate, check balances
 npm run registration:submit  # sends the on-chain registerMiner transaction
 ```
 
-`registration:check` has been run successfully against the fresh, unexposed
-burner wallet:
+Registration was completed with the fresh burner wallet:
 
-- `0.0001` Base Sepolia ETH
+- registration `309` was created on-chain, then rejected by Telegraph's updated
+  YAML validator because four mapped output descriptions were required
+- commit [`4450182`](https://github.com/karan68/proofgate/commit/445018235d62c7327d747af67c64562b35f9f1df)
+  added those four schema-required descriptions
+- `updateMiner(309, ...)` created replacement registration **`310`**
+- registration `310` is active with `URL_SCAN` and the exact deployed YAML hash
+- the Track 1 portal saved submission `6a930a4aae9ddfbc70a760d9` with item 310
+  and overall status `verified`
+- X username: `@karanyadav38450`
+- the wallet retained all `1` testnet USDC; registration used only test ETH gas
+
+Public transaction evidence:
+
+- [initial registration](https://sepolia.basescan.org/tx/0x6524ef379a6b92a491e859d39dc7b3578da45861a2e1340f67b30ec8e4624fcc)
+- [schema-correcting update](https://sepolia.basescan.org/tx/0xd86632828b733200eb3ae3306df315d2be5e47eb8af0077f5fa690f538fa38a8)
+
+Final registered metadata:
+
+- Base Sepolia registration ID: `310`
+- Miner slug: `proofgate-url-intelligence`
+- YAML SHA-256: `0x9841d385976c89586f4c80bee0cecfd8ded75cba605b9f921d779376460e01d4`
 - `1` testnet USDC
 - hosted YAML SHA-256 verified
 - all descriptor checks passed
-- wallet nonce remained zero after the check
-- `ready_to_register: true`
 
-**The registration transaction has not been submitted.** `registration:submit`
-is intentionally separate and must be explicitly authorized. The known
-chat-exposed test address is hard-blocked by the script.
+The known chat-exposed test address remains hard-blocked by the registration
+script and was not used for registration or submission.
 
 ## Local Development
 
@@ -424,8 +442,9 @@ Current verified baseline:
 | npm audit | 0 vulnerabilities |
 | Live API parameter matrix | 28/28 expected statuses |
 | Production responsive checks | 1440x900 and 390x844, no horizontal overflow |
-| Public GitHub CI | [successful run](https://github.com/karan68/proofgate/actions/runs/32233491431) |
-| Registration readiness | read-only check passed; no transaction submitted |
+| Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
+| Miner registration | active replacement ID `310`; deployed YAML hash matches |
+| Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
 
 Run locally:
 
@@ -486,8 +505,8 @@ keep local credentials out of source and deployment bundles.
 
 - Production payment is currently disabled by choice; the successful paid run is
   historical verified evidence, not a claim that the public instance is funded.
-- The ProofGate Miner endpoint is deployed, but the on-chain Miner registration
-  transaction has not been submitted.
+- The Miner is registered and Track 1 is verified, but inclusion and ranking in
+  Telegraph's routed Miner pool remain controlled by the protocol.
 - Reputation strength depends on configured provider keys. Missing providers
   reduce confidence instead of being counted clean.
 - A clean result is evidence, not proof against zero-day threats.
