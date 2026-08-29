@@ -6,6 +6,7 @@
 [![MCP v2](https://img.shields.io/badge/MCP-v2.0.0-62a7ff)](https://modelcontextprotocol.io/)
 [![Base Sepolia](https://img.shields.io/badge/network-Base%20Sepolia-0052ff)](https://sepolia.basescan.org/)
 [![Telegraph Track 1](https://img.shields.io/badge/Telegraph%20Track%201-verified-54df90)](https://submissions.telegraphprotocol.com/mine)
+[![Telegraph Track 2](https://img.shields.io/badge/Telegraph%20Track%202-WASM%20ready-f0b429)](./public/wasm/proofgate-url-scorer.wasm)
 
 **A pre-execution firewall for autonomous agents.** ProofGate buys a URL safety
 verdict through Telegraph, applies a local fail-closed policy, and performs the
@@ -14,6 +15,7 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 
 - **Live console:** https://proofgate-six.vercel.app
 - **Miner declaration:** https://proofgate-six.vercel.app/miner.yaml
+- **Track 2 scorer:** [`proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm)
 - **Source:** https://github.com/karan68/proofgate
 - **Verified settlement:** [0.01 USDC on Base Sepolia](https://sepolia.basescan.org/tx/0xfb8e49d1eee8d13e7b18707942bbd85f5a99f69dbe41e285ed8fbd21ee316585)
 - **Track 1 submission:** verified Miner registration `310`
@@ -22,7 +24,8 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 > no payer key (`payment_ready: false`). Discovery, health, the ProofGate Miner,
 > Miner YAML, and the console are live. Paid guard execution remains disabled
 > until an operator explicitly enables it. Miner registration `310` is active
-> on Base Sepolia and the Track 1 portal submission is saved and verified.
+> on Base Sepolia and the Track 1 portal submission is saved and verified. The
+> Track 2 scorer is built and publicly verified but not yet registered on-chain.
 
 ![ProofGate live production console showing four URL_SCAN Miners and a locked operator ledger](./public/screenshots/production-console-desktop.png)
 
@@ -72,7 +75,89 @@ flowchart LR
 | Web console | Live Miner pool, payment readiness, operator auth, evidence, receipts, execution result, audit history |
 | Production controls | Constant-time bearer auth, per-identity distributed limits, security headers, secret-free public deployment |
 | Registration | Dynamic Miner YAML plus dry-run-first Base Sepolia registration tooling |
+| Track 2 scorer | Import-free `URL_SCAN` WASM with target, verdict, count, and entity binding |
 | Continuous verification | GitHub Actions: install, typegen/typecheck, lint, tests, app build, MCP build, dependency audit |
+
+## Telegraph Track 2: URL_SCAN Scorer
+
+ProofGate includes a standalone, dependency-free Rust scoring module for
+Telegraph validators. It is intentionally specialized for `URL_SCAN`: a
+security verdict should not receive credit merely because it repeats the right
+keywords while changing the target, count, source, or conclusion.
+
+The module exports linear memory plus the required ABI:
+
+```text
+alloc(size: i32) -> i32
+dealloc(ptr: i32, size: i32)
+rank_answer(
+  question_ptr: i32, question_len: i32,
+  ground_truth_ptr: i32, ground_truth_len: i32,
+  answer_ptr: i32, answer_len: i32
+) -> f32
+```
+
+The scorer uses a 2 MiB per-call input arena and scans at most 128 KiB and 384
+tokens per input. The arena resets after each score and traps rather than
+returning overlapping memory if a caller exceeds it. The scorer performs:
+
+1. exact significant-token matching
+2. URL, host, IP, and long-hash identity binding
+3. safe, malicious, suspicious, boolean, and negation-aware verdict extraction
+4. field-aware numeric checks for engine counts and reputation values
+5. confirmation, source-agreement, entity-swap, and mixed-verdict checks
+6. weighted recall/precision scoring when no deterministic verdict rail applies
+
+Verdict-looking words inside identifiers, such as `secure` in a hostname, are
+treated as target data rather than as an answer. Blank answers score `0`, exact
+answers score `1`, and all paths return a finite `f32` in `[0, 1]`.
+
+### Reproducible artifact
+
+| Field | Value |
+| --- | --- |
+| Intent | `URL_SCAN` |
+| Artifact | [`public/wasm/proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm) |
+| Compiled size | `17,096` bytes |
+| Keccak-256 | `0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441` |
+| Imports | `0` |
+| Required exports | `memory`, `alloc`, `dealloc`, `rank_answer` |
+| Toolchain | Rust `1.96.1`, target `wasm32-unknown-unknown` |
+| Registration | pending |
+
+Build and verify it from source:
+
+```powershell
+npm run wasm:test
+npm run wasm:build
+npm run wasm:benchmark
+```
+
+The build command rejects artifacts over 32 MiB, any host import, a missing ABI
+export, an allocator that cannot survive 10,000 repeated scores, or an allocator
+that accepts an oversized arena request. The benchmark command exits nonzero
+unless every pinned independent URL case is ordered correctly and every pinned
+URL attack passes.
+
+### Public benchmark evidence
+
+The comparison uses the current live champion binary from
+[`zkasuran/telegraph-salience-scorer@0174a85`](https://github.com/zkasuran/telegraph-salience-scorer/tree/0174a85639c398a0e898dcb11b54367eb2723b2b)
+and URL-specific corpora pinned to
+[`sneg55/verdictlock@9f06db3`](https://github.com/sneg55/verdictlock/tree/9f06db38f09bdeba8d85f14973db9eeffd414d05).
+
+| Public corpus | ProofGate | Live champion |
+| --- | ---: | ---: |
+| Telegraph fixture, URL ordering | `1/1`, margin `1.0000` | `1/1`, margin `1.0000` |
+| Independent URL ordering | **`26/26`, margin `0.9476`** | `20/26`, margin `0.4103` |
+| URL gaming/robustness attacks | **`18/18`** | `9/18` |
+| Independent gate-stress ordering | `15/26`, margin `0.3092` | **`22/26`, margin `0.6072`** |
+
+These public corpora are development proxies, not Telegraph's private promotion
+evaluator. The 26/26 and 18/18 results are reproducible evidence, not a claim
+that the module will pass an unseen 15-case evaluation. The weaker gate-stress
+result is retained here because lexical paraphrases remain the scorer's known
+limitation.
 
 ## End-to-End Evidence
 
@@ -348,6 +433,17 @@ npm run registration:check   # read-only: fetch, hash, validate, check balances
 npm run registration:submit  # sends the on-chain registerMiner transaction
 ```
 
+Track 2 registration separately requires a commit-pinned raw GitHub URL. The
+check command fetches that URL, compares its bytes to the local artifact,
+recomputes Keccak-256, reads canonical intents, and simulates `registerWasm`
+before submit mode can send a gas-only transaction:
+
+```powershell
+$env:PROOFGATE_WASM_URL="https://raw.githubusercontent.com/karan68/proofgate/<40-character-commit>/public/wasm/proofgate-url-scorer.wasm"
+npm run wasm:registration:check
+npm run wasm:registration:submit
+```
+
 Registration was completed with the fresh burner wallet:
 
 - registration `309` was created on-chain, then rejected by Telegraph's updated
@@ -411,6 +507,7 @@ history, screenshots, browser-local storage, or `NEXT_PUBLIC_*` variables.
 | `PROOFGATE_API_KEY` | Production guard/audit | Operator bearer credential | unset |
 | `PROOFGATE_PUBLIC_URL` | Publishing | Canonical HTTPS app origin | local request origin |
 | `PROOFGATE_MINER_YAML_URL` | Registration script | Exact hosted YAML URL | `<public URL>/miner.yaml` |
+| `PROOFGATE_WASM_URL` | Track 2 registration | Commit-pinned raw GitHub artifact URL | unset |
 | `PROOFGATE_MINER_ID` | Miner YAML | Registration ID placeholder/metadata | `7402` |
 | `PROOFGATE_REPOSITORY_URL` | Publishing | Public source URL in YAML | unset |
 | `PROOFGATE_AUDIT_FILE` | Local optional | JSONL path override | `data/proofgate-audit.jsonl` |
@@ -445,6 +542,9 @@ Current verified baseline:
 | Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
 | Miner registration | active replacement ID `310`; deployed YAML hash matches |
 | Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
+| Track 2 scorer tests | **12 passed, 0 failed**; arbitrary bytes and 200 KiB input included |
+| Track 2 artifact | 17,096 bytes; 0 imports; required ABI exports present |
+| Track 2 public URL benchmark | **26/26 orderings and 18/18 attacks** on pinned corpora |
 
 Run locally:
 
@@ -470,7 +570,11 @@ verification commands are in [`docs/VERIFICATION.md`](./docs/VERIFICATION.md).
 mcp/server.ts                        MCP v2 stdio server
 scripts/mcp-smoke.ts                 real MCP client handshake
 scripts/register-miner.ts            dry-run-first on-chain registration
+scripts/register-wasm.ts             immutable-byte check, simulation, WASM registration
+scripts/benchmark-wasm-scorer.mjs    pinned public scorer comparisons and attack gates
 scripts/capture-readme-screenshots.mjs reproducible no-payment docs captures
+wasm-scorer/src/lib.rs               bounded import-free URL_SCAN scoring module
+public/wasm/proofgate-url-scorer.wasm compiled Track 2 artifact
 src/app/api/*                        HTTP route handlers
 src/app/miner.yaml/route.ts          dynamic Miner declaration
 src/components/proofgate-console.tsx operations UI
@@ -515,6 +619,9 @@ keep local credentials out of source and deployment bundles.
 - The audit ledger is tamper-evident, not encrypted or externally witnessed.
 - Local JSONL serialization is intended for one process; production uses Redis.
 - Telegraph and third-party provider availability remain external dependencies.
+- Public scorer benchmarks do not reveal or guarantee the private Track 2 result.
+- The scorer is intent-specific and remains weaker on lexical paraphrases in the
+  disclosed gate-stress corpus.
 - The operator is responsible for key rotation, Redis retention, and protecting
   target URLs that contain sensitive query parameters.
 

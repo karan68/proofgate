@@ -15,6 +15,7 @@ Last updated: **2026-08-29**
 | Deterministic fixture | A known local policy input; no payment and no target request |
 | Automated test | Vitest with injected fetch/DNS/storage dependencies; no real payment |
 | Dry check | Reads public chain/YAML/configuration state but submits no transaction |
+| Public proxy benchmark | Pinned third-party corpus; useful evidence but not the private evaluator |
 
 ## Safety State
 
@@ -26,6 +27,7 @@ At the end of verification:
   outgoing transactions: initial registration and the correcting update.
 - Replacement registration `310` is active for `URL_SCAN`.
 - Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
+- The Track 2 WASM artifact is built and benchmarked but not yet registered.
 - No payment or transaction was initiated while preparing README screenshots.
 
 ## Automated Baseline
@@ -69,6 +71,42 @@ Verified results:
 | MCP v2 initialization and tool listing | passed |
 | npm audit | 0 vulnerabilities |
 | GitHub Actions | [schema-fix run 33263101514: success](https://github.com/karan68/proofgate/actions/runs/33263101514) |
+
+### Track 2 WASM scorer
+
+Commands:
+
+```powershell
+npm run wasm:test
+npm run wasm:build
+npm run wasm:benchmark
+```
+
+Verified artifact:
+
+| Field | Result |
+| --- | --- |
+| Intent | `URL_SCAN` |
+| Rust tests | 12 passed, 0 failed |
+| Arbitrary input | deterministic random bytes, NULs, non-ASCII, repeated calls, 200 KiB answer |
+| WASM allocator | 10,000 repeated scores; oversized 2 MiB arena request traps |
+| Compiled size | 17,096 bytes |
+| Keccak-256 | `0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441` |
+| WASM imports | 0 |
+| ABI exports | `memory`, `alloc`, `dealloc`, `rank_answer` present |
+| Independent URL ordering | 26/26; mean margin 0.9476 |
+| Independent URL attacks | 18/18 |
+| Independent gate stress | 15/26; mean margin 0.3092 |
+
+The URL and attack fixtures are pinned to VerdictLock commit
+`9f06db38f09bdeba8d85f14973db9eeffd414d05`. The comparison champion is pinned
+to `zkasuran/telegraph-salience-scorer` commit
+`0174a85639c398a0e898dcb11b54367eb2723b2b`. These are public proxy results;
+they do not expose or predict Telegraph's private evaluation with certainty.
+
+CI installs Rust 1.96.1 with `wasm32-unknown-unknown`, checks rustfmt, runs the
+tests, rebuilds the committed artifact byte-for-byte, and enforces all pinned
+URL ordering and attack gates.
 
 ## Test Coverage by Module
 

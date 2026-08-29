@@ -20,7 +20,12 @@
     "mcp:smoke": "tsx scripts/mcp-smoke.ts",
     "docs:capture": "node scripts/capture-readme-screenshots.mjs",
     "registration:check": "tsx scripts/register-miner.ts",
-    "registration:submit": "tsx scripts/register-miner.ts --submit"
+    "registration:submit": "tsx scripts/register-miner.ts --submit",
+    "wasm:test": "cargo test --manifest-path wasm-scorer/Cargo.toml",
+    "wasm:build": "cargo build --release --target wasm32-unknown-unknown --manifest-path wasm-scorer/Cargo.toml && node scripts/package-wasm-scorer.mjs",
+    "wasm:benchmark": "node scripts/benchmark-wasm-scorer.mjs public/wasm/proofgate-url-scorer.wasm",
+    "wasm:registration:check": "tsx scripts/register-wasm.ts",
+    "wasm:registration:submit": "tsx scripts/register-wasm.ts --submit"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "^5.3.0",

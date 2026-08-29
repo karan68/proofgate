@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/wasm-scorer/target/
 
 # next.js
 /.next/
