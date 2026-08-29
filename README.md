@@ -25,9 +25,9 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 > Miner YAML, and the console are live. Paid guard execution remains disabled
 > until an operator explicitly enables it. Miner registration `310` is active
 > on Base Sepolia and the Track 1 portal submission is saved and verified. The
-> Track 2 scorer registrations `1810` and `1814` were each rejected at 12/15
-> hidden ordering wins. A vector-assisted third candidate is frozen and awaiting
-> registration. The saved Track 2 portal entry still points to rejected `1814`.
+> Track 2 scorer registrations `1810`, `1814`, and `1816` were each rejected at
+> 12/15 hidden ordering wins. The saved Track 2 portal entry still points to
+> rejected `1814`; ProofGate does not claim an accepted Track 2 registration.
 
 ![ProofGate live production console showing four URL_SCAN Miners and a locked operator ledger](./public/screenshots/production-console-desktop.png)
 
@@ -129,7 +129,7 @@ licenses are recorded in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 | Imports | `0` |
 | Required exports | `memory`, `alloc`, `dealloc`, `rank_answer` |
 | Toolchain | Rust `1.96.1`, target `wasm32-unknown-unknown` |
-| Registration | vector candidate pending; registrations `1810` and `1814` rejected at 12/15 hidden wins |
+| Registration | `1816` rejected: candidate 12/15, champion 15/15 |
 
 Build and verify it from source:
 
@@ -163,10 +163,11 @@ and URL-specific corpora pinned to
 
 These public corpora are development proxies, not Telegraph's private promotion
 evaluator. The 26/26 and 18/18 results are reproducible evidence, not a claim
-that this module will pass an unseen 15-case evaluation. Registrations `1810`
-and `1814` each achieved 12/15 private ordering wins versus the champion's
-15/15 and were rejected. The current artifact adds capped semantic similarity
-after every deterministic safety gate; it has not yet been privately evaluated.
+that this module passes Telegraph's private evaluation. Registrations `1810`,
+`1814`, and `1816` each achieved 12/15 private ordering wins versus the
+champion's 15/15 and were rejected. For `1816`, the current vector-assisted
+artifact scored margin `0.7189615` against the champion's `0.94808555`. Its
+semantic layer improved both pinned public margins but recovered no hidden win.
 
 ## End-to-End Evidence
 

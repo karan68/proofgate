@@ -27,8 +27,8 @@ At the end of verification:
   made.
 - Replacement registration `310` is active for `URL_SCAN`.
 - Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
-- Track 2 registrations `1810` and `1814` were each rejected at 12/15 hidden
-  ordering wins. The vector-assisted candidate is frozen but not yet registered.
+- Track 2 registrations `1810`, `1814`, and `1816` were each rejected at 12/15
+  hidden ordering wins. There is no accepted ProofGate Track 2 registration.
 - Track 2 portal submission `6a9320d4ae9ddfbc70a760db` is saved and verified,
   but still points to rejected registration `1814`.
 - No payment or transaction was initiated while preparing README screenshots.
@@ -117,6 +117,14 @@ Historical private results:
 | --- | --- | ---: | ---: | --- |
 | `1810` | `d1ad35af60df64b1026ec2af36b494903e1622ac` | 12/15 | 15/15 | rejected |
 | `1814` | `97c659e7f8f962be37fb016447f61a5e77702832` | 12/15 | 15/15 | rejected |
+| `1816` | `1307577453d2ee04abd0bf193615d6c62ebcb0e8` | 12/15 | 15/15 | rejected |
+
+Registration `1816` used artifact hash
+`0xc04a107cdeab50dca4b0d06cd4f2a48c0fc64e3eef0767f7d82d6dc43e0147b7`.
+Its candidate margin was `0.7189615` versus champion margin `0.94808555`; worst
+self-match was `1`, score standard deviation was `0.4541932`, and no historical
+rows were evaluated. The confirmed gas-only transaction was
+[`0xf8c307cff97d49d47f66c25acffe0d832e1dd182563c1d0ce7f788c1adc66344`](https://sepolia.basescan.org/tx/0xf8c307cff97d49d47f66c25acffe0d832e1dd182563c1d0ce7f788c1adc66344).
 
 CI installs Rust 1.96.1 with `wasm32-unknown-unknown`, checks rustfmt, tests the
 source, verifies the committed artifact against its registered Keccak, runs all
