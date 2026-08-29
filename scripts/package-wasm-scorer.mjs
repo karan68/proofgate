@@ -7,7 +7,7 @@ const defaultSource =
   "wasm-scorer/target/wasm32-unknown-unknown/release/proofgate_url_scorer.wasm";
 const destination = "public/wasm/proofgate-url-scorer.wasm";
 const frozenArtifactHash =
-  "0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66";
+  "0xc04a107cdeab50dca4b0d06cd4f2a48c0fc64e3eef0767f7d82d6dc43e0147b7";
 const verifyOnly = process.argv.includes("--verify-only");
 const source =
   process.argv.slice(2).find((argument) => !argument.startsWith("--")) ??

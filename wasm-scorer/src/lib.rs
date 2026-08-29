@@ -13,6 +13,13 @@ const HEAP_SIZE: usize = 2 * 1024 * 1024;
 const MAX_TOKENS: usize = 384;
 const MAX_SCAN_BYTES: usize = 131_072;
 const MAX_IDENTIFIERS: usize = 16;
+const MAX_SEMANTIC_COMPARISONS: usize = 96;
+const VECTOR_DIMENSION: usize = 50;
+const VECTOR_SCALE: f32 = 16_129.0;
+const SEMANTIC_FLOOR: f32 = 0.68;
+const SEMANTIC_CAP: f32 = 0.35;
+
+static VECTOR_BLOB: &[u8] = include_bytes!("vectors.bin");
 
 static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 static mut HEAP_OFFSET: usize = 0;
@@ -56,6 +63,7 @@ enum Verdict {
 #[derive(Clone, Copy)]
 struct Token {
     hash: u64,
+    vector_row: i32,
     weight: u8,
     kind: u8,
     confirmation: i8,
@@ -68,6 +76,7 @@ struct Token {
 
 const EMPTY_TOKEN: Token = Token {
     hash: 0,
+    vector_row: -1,
     weight: 0,
     kind: 0,
     confirmation: 0,
@@ -147,6 +156,83 @@ fn token_hash(token: &[u8]) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash
+}
+
+fn vector_hash(token: &[u8]) -> u32 {
+    let mut hash = 0x811c9dc5u32;
+    for byte in token {
+        hash ^= ascii_lower(*byte) as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    hash
+}
+
+fn vector_u32(offset: usize) -> u32 {
+    u32::from_le_bytes([
+        VECTOR_BLOB[offset],
+        VECTOR_BLOB[offset + 1],
+        VECTOR_BLOB[offset + 2],
+        VECTOR_BLOB[offset + 3],
+    ])
+}
+
+fn vector_count() -> usize {
+    if VECTOR_BLOB.len() < 12 || &VECTOR_BLOB[..4] != b"TGV1" {
+        return 0;
+    }
+    let count = vector_u32(4) as usize;
+    let dimension = vector_u32(8) as usize;
+    if dimension != VECTOR_DIMENSION
+        || 12usize
+            .saturating_add(4usize.saturating_mul(count))
+            .saturating_add(dimension.saturating_mul(count))
+            != VECTOR_BLOB.len()
+    {
+        return 0;
+    }
+    count
+}
+
+fn find_vector_row(hash: u32) -> i32 {
+    let mut low = 0usize;
+    let mut high = vector_count();
+    while low < high {
+        let middle = (low + high) / 2;
+        let candidate = vector_u32(12 + 4 * middle);
+        if candidate == hash {
+            return middle as i32;
+        }
+        if candidate < hash {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    -1
+}
+
+fn vector_cosine(left: i32, right: i32) -> f32 {
+    if left < 0 || right < 0 {
+        return 0.0;
+    }
+    if left == right {
+        return 1.0;
+    }
+    let count = vector_count();
+    let base = 12 + 4 * count;
+    let left_offset = base + left as usize * VECTOR_DIMENSION;
+    let right_offset = base + right as usize * VECTOR_DIMENSION;
+    if left_offset + VECTOR_DIMENSION > VECTOR_BLOB.len()
+        || right_offset + VECTOR_DIMENSION > VECTOR_BLOB.len()
+    {
+        return 0.0;
+    }
+    let mut dot = 0i32;
+    for index in 0..VECTOR_DIMENSION {
+        dot += (VECTOR_BLOB[left_offset + index] as i8 as i32)
+            * (VECTOR_BLOB[right_offset + index] as i8 as i32);
+    }
+    (dot as f32 / VECTOR_SCALE).clamp(0.0, 1.0)
 }
 
 fn is_stop_word(token: &[u8]) -> bool {
@@ -602,6 +688,11 @@ fn tokenize(input: &[u8]) -> Tokens {
         };
         tokens.values[tokens.len] = Token {
             hash: token_hash(semantic_raw),
+            vector_row: if identifier_part {
+                -1
+            } else {
+                find_vector_row(vector_hash(semantic_raw))
+            },
             weight: token_weight(semantic_raw, kind),
             kind,
             confirmation: if identifier_part {
@@ -1222,44 +1313,89 @@ fn verdict(question: &Tokens, tokens: &Tokens) -> Verdict {
 }
 
 fn overlap(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) -> f32 {
-    let mut recall_total = 0u32;
-    let mut recall_match = 0u32;
+    fn semantic_eligible(token: &Token) -> bool {
+        token.vector_row >= 0
+            && token.weight > 1
+            && token.kind == 0
+            && token.confirmation == 0
+            && token.agreement == 0
+            && token.direction == 0
+            && token.scale == 0
+            && !token.proper
+    }
+
+    fn semantic_credit(token: &Token, candidates: &Tokens) -> f32 {
+        if !semantic_eligible(token) {
+            return 0.0;
+        }
+        let mut best = 0.0f32;
+        let mut compared = 0usize;
+        for candidate in &candidates.values[..candidates.len] {
+            if !semantic_eligible(candidate) {
+                continue;
+            }
+            compared += 1;
+            let similarity = vector_cosine(token.vector_row, candidate.vector_row);
+            if similarity > best {
+                best = similarity;
+            }
+            if compared == MAX_SEMANTIC_COMPARISONS {
+                break;
+            }
+        }
+        if best < SEMANTIC_FLOOR {
+            0.0
+        } else {
+            let distance = (best - SEMANTIC_FLOOR) / (1.0 - SEMANTIC_FLOOR);
+            0.4 + 0.6 * distance
+        }
+    }
+
+    let mut recall_total = 0.0f32;
+    let mut recall_exact = 0.0f32;
+    let mut recall_semantic = 0.0f32;
     for token in &ground_truth.values[..ground_truth.len] {
         if token.weight == 0 {
             continue;
         }
         let weight = if question.contains(token.hash) {
-            1
+            1.0
         } else {
-            token.weight as u32
+            token.weight as f32
         };
         recall_total += weight;
         if answer.contains(token.hash) {
-            recall_match += weight;
+            recall_exact += weight;
+        } else {
+            recall_semantic += weight * semantic_credit(token, answer);
         }
     }
 
-    let mut precision_total = 0u32;
-    let mut precision_match = 0u32;
+    let mut precision_total = 0.0f32;
+    let mut precision_exact = 0.0f32;
+    let mut precision_semantic = 0.0f32;
     for token in &answer.values[..answer.len] {
         if token.weight == 0 || question.contains(token.hash) {
             continue;
         }
-        precision_total += token.weight as u32;
+        let weight = token.weight as f32;
+        precision_total += weight;
         if ground_truth.contains(token.hash) {
-            precision_match += token.weight as u32;
+            precision_exact += weight;
+        } else {
+            precision_semantic += weight * semantic_credit(token, ground_truth);
         }
     }
 
-    let recall = if recall_total == 0 {
+    let recall = if recall_total == 0.0 {
         0.0
     } else {
-        recall_match as f32 / recall_total as f32
+        (recall_exact + recall_semantic.min(recall_total * SEMANTIC_CAP)) / recall_total
     };
-    let precision = if precision_total == 0 {
+    let precision = if precision_total == 0.0 {
         0.0
     } else {
-        precision_match as f32 / precision_total as f32
+        (precision_exact + precision_semantic.min(precision_total * SEMANTIC_CAP)) / precision_total
     };
     0.68 * recall + 0.32 * precision
 }
@@ -1811,5 +1947,22 @@ mod tests {
             ),
             0.0,
         );
+    }
+
+    #[test]
+    fn vector_fallback_is_loaded_and_bounded_to_meaningful_neighbors() {
+        assert_eq!(vector_count(), 14_700);
+        let car = find_vector_row(vector_hash(b"car"));
+        let vehicle = find_vector_row(vector_hash(b"vehicle"));
+        let server = find_vector_row(vector_hash(b"server"));
+        assert!(car >= 0 && vehicle >= 0 && server >= 0);
+        assert!(vector_cosine(car, vehicle) >= SEMANTIC_FLOOR);
+        assert!(vector_cosine(car, vehicle) > vector_cosine(car, server));
+
+        let question = tokenize(b"");
+        let truth = tokenize(b"car");
+        let good = tokenize(b"vehicle");
+        let bad = tokenize(b"server");
+        assert!(overlap(&question, &truth, &good) > overlap(&question, &truth, &bad));
     }
 }

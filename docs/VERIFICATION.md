@@ -23,12 +23,14 @@ At the end of verification:
 
 - Public production reports `payment_ready: false`.
 - The production payer private key is not configured.
-- The fresh registration wallet retained `1` testnet USDC and made exactly two
-  outgoing transactions: initial registration and the correcting update.
+- Track 2 registrations used Base Sepolia gas only; no x402 or USDC payment was
+  made.
 - Replacement registration `310` is active for `URL_SCAN`.
 - Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
-- Track 2 registration `1810` was rejected at 12/15 hidden ordering wins; the
-  improved artifact is frozen but not yet registered.
+- Track 2 registrations `1810` and `1814` were each rejected at 12/15 hidden
+  ordering wins. The vector-assisted candidate is frozen but not yet registered.
+- Track 2 portal submission `6a9320d4ae9ddfbc70a760db` is saved and verified,
+  but still points to rejected registration `1814`.
 - No payment or transaction was initiated while preparing README screenshots.
 
 ## Automated Baseline
@@ -89,22 +91,32 @@ Verified artifact:
 | Field | Result |
 | --- | --- |
 | Intent | `URL_SCAN` |
-| Rust tests | 17 passed, 0 failed |
+| Rust tests | 18 passed, 0 failed |
 | Arbitrary input | deterministic random bytes, NULs, non-ASCII, repeated calls, 200 KiB answer |
 | WASM allocator | 10,000 repeated scores; oversized 2 MiB arena request traps |
-| Compiled size | 22,150 bytes |
-| Keccak-256 | `0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66` |
+| Compiled size | 817,538 bytes |
+| Keccak-256 | `0xc04a107cdeab50dca4b0d06cd4f2a48c0fc64e3eef0767f7d82d6dc43e0147b7` |
 | WASM imports | 0 |
 | ABI exports | `memory`, `alloc`, `dealloc`, `rank_answer` present |
-| Independent URL ordering | 26/26; mean margin 0.9476 |
+| Independent URL ordering | 26/26; mean margin 0.9599 |
 | Independent URL attacks | 18/18 |
-| Independent gate stress | 26/26; mean margin 0.8325 |
+| Independent gate stress | 26/26; mean margin 0.8428 |
 
 The URL and attack fixtures are pinned to VerdictLock commit
 `9f06db38f09bdeba8d85f14973db9eeffd414d05`. The comparison champion is pinned
 to `zkasuran/telegraph-salience-scorer` commit
 `0174a85639c398a0e898dcb11b54367eb2723b2b`. These are public proxy results;
 they do not expose or predict Telegraph's private evaluation with certainty.
+The packed GloVe data source and licenses are recorded in
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). Semantic credit is capped
+and runs only after deterministic factual-conflict gates.
+
+Historical private results:
+
+| Registration | Source commit | Candidate | Champion | Result |
+| --- | --- | ---: | ---: | --- |
+| `1810` | `d1ad35af60df64b1026ec2af36b494903e1622ac` | 12/15 | 15/15 | rejected |
+| `1814` | `97c659e7f8f962be37fb016447f61a5e77702832` | 12/15 | 15/15 | rejected |
 
 CI installs Rust 1.96.1 with `wasm32-unknown-unknown`, checks rustfmt, tests the
 source, verifies the committed artifact against its registered Keccak, runs all

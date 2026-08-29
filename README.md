@@ -25,8 +25,9 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 > Miner YAML, and the console are live. Paid guard execution remains disabled
 > until an operator explicitly enables it. Miner registration `310` is active
 > on Base Sepolia and the Track 1 portal submission is saved and verified. The
-> first Track 2 scorer registration, `1810`, was rejected at 12/15 hidden
-> ordering wins; the improved scorer is frozen and awaiting registration.
+> Track 2 scorer registrations `1810` and `1814` were each rejected at 12/15
+> hidden ordering wins. A vector-assisted third candidate is frozen and awaiting
+> registration. The saved Track 2 portal entry still points to rejected `1814`.
 
 ![ProofGate live production console showing four URL_SCAN Miners and a locked operator ledger](./public/screenshots/production-console-desktop.png)
 
@@ -76,12 +77,12 @@ flowchart LR
 | Web console | Live Miner pool, payment readiness, operator auth, evidence, receipts, execution result, audit history |
 | Production controls | Constant-time bearer auth, per-identity distributed limits, security headers, secret-free public deployment |
 | Registration | Dynamic Miner YAML plus dry-run-first Base Sepolia registration tooling |
-| Track 2 scorer | Import-free `URL_SCAN` WASM with target, verdict, count, and entity binding |
+| Track 2 scorer | Import-free `URL_SCAN` WASM with deterministic fact binding and bounded semantic credit |
 | Continuous verification | GitHub Actions: install, typegen/typecheck, lint, tests, app build, MCP build, dependency audit |
 
 ## Telegraph Track 2: URL_SCAN Scorer
 
-ProofGate includes a standalone, dependency-free Rust scoring module for
+ProofGate includes a standalone, import-free Rust scoring module for
 Telegraph validators. It is intentionally specialized for `URL_SCAN`: a
 security verdict should not receive credit merely because it repeats the right
 keywords while changing the target, count, source, or conclusion.
@@ -107,11 +108,15 @@ returning overlapping memory if a caller exceeds it. The scorer performs:
 3. safe, malicious, suspicious, boolean, and negation-aware verdict extraction
 4. field-aware numeric checks for engine counts and reputation values
 5. confirmation, source-agreement, entity-swap, and mixed-verdict checks
-6. weighted recall/precision scoring when no deterministic verdict rail applies
+6. bounded GloVe similarity for unmatched ordinary content words
+7. weighted recall/precision scoring when no deterministic verdict rail applies
 
 Verdict-looking words inside identifiers, such as `secure` in a hostname, are
 treated as target data rather than as an answer. Blank answers score `0`, exact
 answers score `1`, and all paths return a finite `f32` in `[0, 1]`.
+Semantic credit is capped at 35% and cannot override target, verdict, numeric,
+entity, direction, scale, or relation conflicts. The packed vector asset and
+licenses are recorded in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
 ### Reproducible artifact
 
@@ -119,12 +124,12 @@ answers score `1`, and all paths return a finite `f32` in `[0, 1]`.
 | --- | --- |
 | Intent | `URL_SCAN` |
 | Artifact | [`public/wasm/proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm) |
-| Compiled size | `22,150` bytes |
-| Keccak-256 | `0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66` |
+| Compiled size | `817,538` bytes |
+| Keccak-256 | `0xc04a107cdeab50dca4b0d06cd4f2a48c0fc64e3eef0767f7d82d6dc43e0147b7` |
 | Imports | `0` |
 | Required exports | `memory`, `alloc`, `dealloc`, `rank_answer` |
 | Toolchain | Rust `1.96.1`, target `wasm32-unknown-unknown` |
-| Registration | improved candidate pending; registration `1810` rejected at 12/15 hidden wins |
+| Registration | vector candidate pending; registrations `1810` and `1814` rejected at 12/15 hidden wins |
 
 Build and verify it from source:
 
@@ -152,17 +157,16 @@ and URL-specific corpora pinned to
 | Public corpus | ProofGate | Live champion |
 | --- | ---: | ---: |
 | Telegraph fixture, URL ordering | `1/1`, margin `1.0000` | `1/1`, margin `1.0000` |
-| Independent URL ordering | **`26/26`, margin `0.9476`** | `20/26`, margin `0.4103` |
+| Independent URL ordering | **`26/26`, margin `0.9599`** | `20/26`, margin `0.4103` |
 | URL gaming/robustness attacks | **`18/18`** | `9/18` |
-| Independent gate-stress ordering | **`26/26`, margin `0.8325`** | `22/26`, margin `0.6072` |
+| Independent gate-stress ordering | **`26/26`, margin `0.8428`** | `22/26`, margin `0.6072` |
 
 These public corpora are development proxies, not Telegraph's private promotion
 evaluator. The 26/26 and 18/18 results are reproducible evidence, not a claim
-that the improved module will pass an unseen 15-case evaluation. Registration
-`1810` established the earlier version's actual private result: 12/15 ordering
-wins versus the champion's 15/15. The current artifact adds general confirmation,
-credential-theft, count-denominator, direction, scale, source-alias, entity, and
-subject/object semantics in response; it has not yet been privately evaluated.
+that this module will pass an unseen 15-case evaluation. Registrations `1810`
+and `1814` each achieved 12/15 private ordering wins versus the champion's
+15/15 and were rejected. The current artifact adds capped semantic similarity
+after every deterministic safety gate; it has not yet been privately evaluated.
 
 ## End-to-End Evidence
 
@@ -547,8 +551,8 @@ Current verified baseline:
 | Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
 | Miner registration | active replacement ID `310`; deployed YAML hash matches |
 | Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
-| Track 2 scorer tests | **17 passed, 0 failed**; arbitrary bytes and 200 KiB input included |
-| Track 2 artifact | 22,150 bytes; 0 imports; required ABI exports present |
+| Track 2 scorer tests | **18 passed, 0 failed**; vector lookup, arbitrary bytes, and 200 KiB input included |
+| Track 2 artifact | 817,538 bytes; 0 imports; required ABI exports present |
 | Track 2 public URL benchmark | **26/26 core, 26/26 stress, and 18/18 attacks** on pinned corpora |
 
 Run locally:
