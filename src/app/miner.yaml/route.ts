@@ -115,18 +115,36 @@ export async function GET(request: NextRequest) {
         min_price_usdc: 0.01,
         fields: {
           strings: [
-            { index: 0, name: "verdict", source_path: "verdict" },
-            { index: 1, name: "reason", source_path: "reason" },
+            {
+              index: 0,
+              name: "verdict",
+              description: "Normalized safe, suspicious, or malicious verdict.",
+              source_path: "verdict",
+            },
+            {
+              index: 1,
+              name: "reason",
+              description: "Human-readable explanation for the safety verdict.",
+              source_path: "reason",
+            },
           ],
           integers: [
             {
               index: 0,
               name: "confidence_x10000",
+              description: "Confidence score scaled to an integer from 0 to 10,000.",
               source_path: "confidence",
               multiplier: 10000,
             },
           ],
-          bools: [{ index: 0, name: "malicious", source_path: "malicious" }],
+          bools: [
+            {
+              index: 0,
+              name: "malicious",
+              description: "True when the submitted URL is classified as malicious.",
+              source_path: "malicious",
+            },
+          ],
         },
         request: [
           {

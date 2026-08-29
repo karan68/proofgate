@@ -34,6 +34,15 @@ describe("miner.yaml route", () => {
     expect(response.status).toBe(200);
     expect(config.base_url).toBe("https://proofgate.example");
     expect(config.endpoints[0].external_path).toBe("/api/miner/scan");
+    const mappedFields = [
+      ...config.on_chain.fields.strings,
+      ...config.on_chain.fields.integers,
+      ...config.on_chain.fields.bools,
+    ];
+    expect(mappedFields).toHaveLength(4);
+    expect(mappedFields.every((field: { description?: string }) => {
+      return typeof field.description === "string" && field.description.length > 0;
+    })).toBe(true);
   });
 
   it("allows an HTTP localhost origin for development", async () => {
