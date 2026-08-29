@@ -39,14 +39,14 @@ jobs:
       - name: Test WASM scorer
         run: npm run wasm:test
 
-      - name: Build WASM scorer
-        run: npm run wasm:build
-
       - name: Verify committed WASM artifact
-        run: git diff --exit-code -- public/wasm/proofgate-url-scorer.wasm
+        run: npm run wasm:verify
 
       - name: Benchmark WASM scorer
         run: npm run wasm:benchmark
+
+      - name: Build WASM scorer from source
+        run: npm run wasm:build
 
       - name: Type-check
         run: npm run typecheck

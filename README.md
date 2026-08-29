@@ -129,15 +129,17 @@ Build and verify it from source:
 
 ```powershell
 npm run wasm:test
+npm run wasm:verify
 npm run wasm:build
 npm run wasm:benchmark
 ```
 
-The build command rejects artifacts over 32 MiB, any host import, a missing ABI
-export, an allocator that cannot survive 10,000 repeated scores, or an allocator
-that accepts an oversized arena request. The benchmark command exits nonzero
-unless every pinned independent URL case is ordered correctly and every pinned
-URL attack passes.
+The verify command checks the committed artifact's registered Keccak plus its
+size, imports, ABI, 10,000-call repeatability, and oversized-allocation trap.
+The benchmark command runs against those exact committed bytes and exits
+nonzero unless every pinned independent URL case is ordered correctly and every
+pinned URL attack passes. CI then compiles the source independently; Rust does
+not guarantee byte-identical WASM output across host operating systems.
 
 ### Public benchmark evidence
 

@@ -78,6 +78,7 @@ Commands:
 
 ```powershell
 npm run wasm:test
+npm run wasm:verify
 npm run wasm:build
 npm run wasm:benchmark
 ```
@@ -104,9 +105,11 @@ to `zkasuran/telegraph-salience-scorer` commit
 `0174a85639c398a0e898dcb11b54367eb2723b2b`. These are public proxy results;
 they do not expose or predict Telegraph's private evaluation with certainty.
 
-CI installs Rust 1.96.1 with `wasm32-unknown-unknown`, checks rustfmt, runs the
-tests, rebuilds the committed artifact byte-for-byte, and enforces all pinned
-URL ordering and attack gates.
+CI installs Rust 1.96.1 with `wasm32-unknown-unknown`, checks rustfmt, tests the
+source, verifies the committed artifact against its registered Keccak, runs all
+pinned URL ordering and attack gates against those exact bytes, and then builds
+the source independently. Cross-host Rust builds are not claimed to be
+byte-identical.
 
 ## Test Coverage by Module
 

@@ -3,9 +3,15 @@ import { dirname } from "node:path";
 
 import { keccak256, toHex } from "viem";
 
-const source =
+const defaultSource =
   "wasm-scorer/target/wasm32-unknown-unknown/release/proofgate_url_scorer.wasm";
 const destination = "public/wasm/proofgate-url-scorer.wasm";
+const registeredHash =
+  "0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441";
+const verifyOnly = process.argv.includes("--verify-only");
+const source =
+  process.argv.slice(2).find((argument) => !argument.startsWith("--")) ??
+  defaultSource;
 
 const bytes = await readFile(source);
 if (bytes.byteLength > 32 * 1024 * 1024) {
@@ -57,17 +63,26 @@ if (!oversizedAllocationTrapped) {
   throw new Error("WASM allocator accepted an oversized input arena request");
 }
 
-await mkdir(dirname(destination), { recursive: true });
-await writeFile(destination, bytes);
+const artifactHash = keccak256(toHex(bytes));
+if (verifyOnly && artifactHash !== registeredHash) {
+  throw new Error(
+    `Committed WASM hash ${artifactHash} does not match registered hash ${registeredHash}`,
+  );
+}
+if (!verifyOnly) {
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, bytes);
+}
 
 console.log(
   JSON.stringify(
     {
       source,
-      destination,
+      destination: verifyOnly ? null : destination,
+      mode: verifyOnly ? "verify" : "package",
       bytes: bytes.byteLength,
       imports: imports.length,
-      keccak256: keccak256(toHex(bytes)),
+      keccak256: artifactHash,
       exports: [...exports].sort(),
     },
     null,
