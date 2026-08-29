@@ -157,6 +157,11 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result).toMatchObject({ verdict: "safe", malicious: false, confidence: 0.96 });
+    expect(
+      requests.find((request) => request.url.startsWith("https://rdap.org/"))?.init?.headers,
+    ).toMatchObject({
+      "User-Agent": "ProofGate/0.1 (+https://proofgate-six.vercel.app)",
+    });
     expect(requests.find((request) => request.url.includes("urlhaus"))?.init?.headers).toMatchObject({
       "Auth-Key": "urlhaus-key",
     });

@@ -171,7 +171,10 @@ async function rdapEvidence(
     const response = await fetcher(
       `https://rdap.org/domain/${encodeURIComponent(target.registrableDomain)}`,
       {
-        headers: { Accept: "application/rdap+json, application/json" },
+        headers: {
+          Accept: "application/rdap+json, application/json",
+          "User-Agent": "ProofGate/0.1 (+https://proofgate-six.vercel.app)",
+        },
         signal: AbortSignal.timeout(8_000),
       },
     );
