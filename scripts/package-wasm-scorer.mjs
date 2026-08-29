@@ -6,8 +6,8 @@ import { keccak256, toHex } from "viem";
 const defaultSource =
   "wasm-scorer/target/wasm32-unknown-unknown/release/proofgate_url_scorer.wasm";
 const destination = "public/wasm/proofgate-url-scorer.wasm";
-const registeredHash =
-  "0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441";
+const frozenArtifactHash =
+  "0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66";
 const verifyOnly = process.argv.includes("--verify-only");
 const source =
   process.argv.slice(2).find((argument) => !argument.startsWith("--")) ??
@@ -64,9 +64,9 @@ if (!oversizedAllocationTrapped) {
 }
 
 const artifactHash = keccak256(toHex(bytes));
-if (verifyOnly && artifactHash !== registeredHash) {
+if (verifyOnly && artifactHash !== frozenArtifactHash) {
   throw new Error(
-    `Committed WASM hash ${artifactHash} does not match registered hash ${registeredHash}`,
+    `Committed WASM hash ${artifactHash} does not match frozen hash ${frozenArtifactHash}`,
   );
 }
 if (!verifyOnly) {

@@ -198,12 +198,16 @@ const candidateVerdictLock = summaries.find(
 const candidateUrlAttacks = attackSuites.find(
   (suite) => suite.name === "candidate/url",
 );
+const candidateGateStress = summaries.find(
+  (summary) => summary.name === "candidate/gate_stress",
+);
 if (
   candidateUrl.rows.length === 0 ||
   candidateUrl.wins < championUrl.wins ||
   candidateUrl.meanMargin < championUrl.meanMargin ||
   candidateUrl.worstSelf < 0.75 ||
   candidateVerdictLock.wins !== candidateVerdictLock.rows.length ||
+  candidateGateStress.wins !== candidateGateStress.rows.length ||
   candidateUrlAttacks.rows.some((row) => !row.passed)
 ) {
   process.exitCode = 1;

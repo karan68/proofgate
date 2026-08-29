@@ -25,7 +25,8 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 > Miner YAML, and the console are live. Paid guard execution remains disabled
 > until an operator explicitly enables it. Miner registration `310` is active
 > on Base Sepolia and the Track 1 portal submission is saved and verified. The
-> Track 2 scorer is built and publicly verified but not yet registered on-chain.
+> first Track 2 scorer registration, `1810`, was rejected at 12/15 hidden
+> ordering wins; the improved scorer is frozen and awaiting registration.
 
 ![ProofGate live production console showing four URL_SCAN Miners and a locked operator ledger](./public/screenshots/production-console-desktop.png)
 
@@ -118,12 +119,12 @@ answers score `1`, and all paths return a finite `f32` in `[0, 1]`.
 | --- | --- |
 | Intent | `URL_SCAN` |
 | Artifact | [`public/wasm/proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm) |
-| Compiled size | `17,096` bytes |
-| Keccak-256 | `0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441` |
+| Compiled size | `22,150` bytes |
+| Keccak-256 | `0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66` |
 | Imports | `0` |
 | Required exports | `memory`, `alloc`, `dealloc`, `rank_answer` |
 | Toolchain | Rust `1.96.1`, target `wasm32-unknown-unknown` |
-| Registration | pending |
+| Registration | improved candidate pending; registration `1810` rejected at 12/15 hidden wins |
 
 Build and verify it from source:
 
@@ -153,13 +154,15 @@ and URL-specific corpora pinned to
 | Telegraph fixture, URL ordering | `1/1`, margin `1.0000` | `1/1`, margin `1.0000` |
 | Independent URL ordering | **`26/26`, margin `0.9476`** | `20/26`, margin `0.4103` |
 | URL gaming/robustness attacks | **`18/18`** | `9/18` |
-| Independent gate-stress ordering | `15/26`, margin `0.3092` | **`22/26`, margin `0.6072`** |
+| Independent gate-stress ordering | **`26/26`, margin `0.8325`** | `22/26`, margin `0.6072` |
 
 These public corpora are development proxies, not Telegraph's private promotion
 evaluator. The 26/26 and 18/18 results are reproducible evidence, not a claim
-that the module will pass an unseen 15-case evaluation. The weaker gate-stress
-result is retained here because lexical paraphrases remain the scorer's known
-limitation.
+that the improved module will pass an unseen 15-case evaluation. Registration
+`1810` established the earlier version's actual private result: 12/15 ordering
+wins versus the champion's 15/15. The current artifact adds general confirmation,
+credential-theft, count-denominator, direction, scale, source-alias, entity, and
+subject/object semantics in response; it has not yet been privately evaluated.
 
 ## End-to-End Evidence
 
@@ -544,9 +547,9 @@ Current verified baseline:
 | Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
 | Miner registration | active replacement ID `310`; deployed YAML hash matches |
 | Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
-| Track 2 scorer tests | **12 passed, 0 failed**; arbitrary bytes and 200 KiB input included |
-| Track 2 artifact | 17,096 bytes; 0 imports; required ABI exports present |
-| Track 2 public URL benchmark | **26/26 orderings and 18/18 attacks** on pinned corpora |
+| Track 2 scorer tests | **17 passed, 0 failed**; arbitrary bytes and 200 KiB input included |
+| Track 2 artifact | 22,150 bytes; 0 imports; required ABI exports present |
+| Track 2 public URL benchmark | **26/26 core, 26/26 stress, and 18/18 attacks** on pinned corpora |
 
 Run locally:
 

@@ -27,7 +27,8 @@ At the end of verification:
   outgoing transactions: initial registration and the correcting update.
 - Replacement registration `310` is active for `URL_SCAN`.
 - Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
-- The Track 2 WASM artifact is built and benchmarked but not yet registered.
+- Track 2 registration `1810` was rejected at 12/15 hidden ordering wins; the
+  improved artifact is frozen but not yet registered.
 - No payment or transaction was initiated while preparing README screenshots.
 
 ## Automated Baseline
@@ -88,16 +89,16 @@ Verified artifact:
 | Field | Result |
 | --- | --- |
 | Intent | `URL_SCAN` |
-| Rust tests | 12 passed, 0 failed |
+| Rust tests | 17 passed, 0 failed |
 | Arbitrary input | deterministic random bytes, NULs, non-ASCII, repeated calls, 200 KiB answer |
 | WASM allocator | 10,000 repeated scores; oversized 2 MiB arena request traps |
-| Compiled size | 17,096 bytes |
-| Keccak-256 | `0x972d0d4484c3662f991dc8c6714193528ccab69ee63485980ed83a5536239441` |
+| Compiled size | 22,150 bytes |
+| Keccak-256 | `0x7a9e549510f3b2482dbca0c84e9c37b64ef152f9f49e0fe8ce36c4d47b0f0d66` |
 | WASM imports | 0 |
 | ABI exports | `memory`, `alloc`, `dealloc`, `rank_answer` present |
 | Independent URL ordering | 26/26; mean margin 0.9476 |
 | Independent URL attacks | 18/18 |
-| Independent gate stress | 15/26; mean margin 0.3092 |
+| Independent gate stress | 26/26; mean margin 0.8325 |
 
 The URL and attack fixtures are pinned to VerdictLock commit
 `9f06db38f09bdeba8d85f14973db9eeffd414d05`. The comparison champion is pinned

@@ -60,6 +60,8 @@ struct Token {
     kind: u8,
     confirmation: i8,
     agreement: i8,
+    direction: i8,
+    scale: u8,
     boundary_before: bool,
     proper: bool,
 }
@@ -70,6 +72,8 @@ const EMPTY_TOKEN: Token = Token {
     kind: 0,
     confirmation: 0,
     agreement: 0,
+    direction: 0,
+    scale: 0,
     boundary_before: false,
     proper: false,
 };
@@ -257,6 +261,8 @@ fn token_kind(token: &[u8]) -> u8 {
         b"phish",
         b"blacklist",
         b"blacklisted",
+        b"blocklist",
+        b"blocklisted",
         b"infected",
         b"compromised",
         b"dangerous",
@@ -274,6 +280,17 @@ fn token_kind(token: &[u8]) -> u8 {
         b"blocked",
         b"threat",
         b"threats",
+        b"credential",
+        b"credentials",
+        b"harvesting",
+        b"harvester",
+        b"steals",
+        b"stealing",
+        b"login",
+        b"logins",
+        b"fake",
+        b"spoofed",
+        b"impersonation",
     ]
     .iter()
     .any(|word| token_eq(token, word))
@@ -330,6 +347,11 @@ fn confirmation_kind(token: &[u8]) -> i8 {
         b"found",
         b"matched",
         b"matches",
+        b"identical",
+        b"same",
+        b"support",
+        b"supports",
+        b"supported",
         b"detected",
         b"resolved",
         b"complete",
@@ -348,6 +370,7 @@ fn confirmation_kind(token: &[u8]) -> i8 {
     if [
         b"unverified".as_slice(),
         b"unconfirmed",
+        b"unsupported",
         b"unlisted",
         b"absent",
         b"missing",
@@ -356,6 +379,10 @@ fn confirmation_kind(token: &[u8]) -> i8 {
         b"removed",
         b"nothing",
         b"pending",
+        b"differ",
+        b"differs",
+        b"different",
+        b"contradicts",
     ]
     .iter()
     .any(|word| token_eq(token, word))
@@ -386,6 +413,88 @@ fn agreement_kind(token: &[u8]) -> i8 {
         return -1;
     }
     0
+}
+
+fn direction_kind(token: &[u8]) -> i8 {
+    if [
+        b"rise".as_slice(),
+        b"rises",
+        b"rose",
+        b"risen",
+        b"up",
+        b"higher",
+        b"increase",
+        b"increased",
+        b"climb",
+        b"climbed",
+        b"gain",
+        b"gained",
+        b"grew",
+    ]
+    .iter()
+    .any(|word| token_eq(token, word))
+    {
+        return 1;
+    }
+    if [
+        b"fall".as_slice(),
+        b"falls",
+        b"fell",
+        b"fallen",
+        b"down",
+        b"lower",
+        b"decrease",
+        b"decreased",
+        b"drop",
+        b"dropped",
+        b"decline",
+        b"declined",
+    ]
+    .iter()
+    .any(|word| token_eq(token, word))
+    {
+        return -1;
+    }
+    0
+}
+
+fn scale_kind(token: &[u8]) -> u8 {
+    if [b"b".as_slice(), b"bn", b"billion"]
+        .iter()
+        .any(|word| token_eq(token, word))
+        || numeric_suffix(token) == Some(b'b')
+    {
+        return 3;
+    }
+    if [b"m".as_slice(), b"mn", b"million"]
+        .iter()
+        .any(|word| token_eq(token, word))
+        || numeric_suffix(token) == Some(b'm')
+    {
+        return 2;
+    }
+    if [b"k".as_slice(), b"thousand"]
+        .iter()
+        .any(|word| token_eq(token, word))
+        || numeric_suffix(token) == Some(b'k')
+    {
+        return 1;
+    }
+    0
+}
+
+fn numeric_suffix(token: &[u8]) -> Option<u8> {
+    let (&suffix, numeric) = token.split_last()?;
+    let suffix = ascii_lower(suffix);
+    if !matches!(suffix, b'b' | b'm' | b'k')
+        || numeric.is_empty()
+        || !numeric
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b','))
+    {
+        return None;
+    }
+    Some(suffix)
 }
 
 fn token_weight(token: &[u8], kind: u8) -> u8 {
@@ -480,17 +589,37 @@ fn tokenize(input: &[u8]) -> Tokens {
             break;
         }
         let raw = &input[start..cursor];
-        let kind = if token_in_identifier(input, start, limit) {
+        let semantic_raw = if numeric_suffix(raw).is_some() {
+            &raw[..raw.len() - 1]
+        } else {
+            raw
+        };
+        let identifier_part = token_in_identifier(input, start, limit);
+        let kind = if identifier_part {
             0
         } else {
-            token_kind(raw)
+            token_kind(semantic_raw)
         };
         tokens.values[tokens.len] = Token {
-            hash: token_hash(raw),
-            weight: token_weight(raw, kind),
+            hash: token_hash(semantic_raw),
+            weight: token_weight(semantic_raw, kind),
             kind,
-            confirmation: confirmation_kind(raw),
-            agreement: agreement_kind(raw),
+            confirmation: if identifier_part {
+                0
+            } else {
+                confirmation_kind(raw)
+            },
+            agreement: if identifier_part {
+                0
+            } else {
+                agreement_kind(raw)
+            },
+            direction: if identifier_part {
+                0
+            } else {
+                direction_kind(raw)
+            },
+            scale: if identifier_part { 0 } else { scale_kind(raw) },
             boundary_before,
             proper: tokens.len > 0 && !boundary_before && raw[0].is_ascii_uppercase(),
         };
@@ -570,6 +699,62 @@ fn signed_axis(tokens: &Tokens, select: fn(&Token) -> i8) -> i8 {
     positive.cmp(&negative) as i8
 }
 
+fn scale_axis(tokens: &Tokens) -> u8 {
+    let mut scale = 0;
+    for token in &tokens.values[..tokens.len] {
+        if token.scale == 0 {
+            continue;
+        }
+        if scale != 0 && scale != token.scale {
+            return 0;
+        }
+        scale = token.scale;
+    }
+    scale
+}
+
+fn nearby_content_hash(tokens: &Tokens, index: usize, forward: bool) -> u64 {
+    for distance in 1..=4 {
+        let candidate = if forward {
+            tokens.values.get(index + distance)
+        } else {
+            index
+                .checked_sub(distance)
+                .and_then(|position| tokens.values.get(position))
+        };
+        if let Some(token) = candidate
+            && token.weight > 0
+        {
+            return token.hash;
+        }
+    }
+    0
+}
+
+fn winner_loser(tokens: &Tokens) -> (u64, u64) {
+    for index in 0..tokens.len {
+        if [b"beat".as_slice(), b"beats", b"defeated"]
+            .iter()
+            .any(|word| token_is(tokens, index, word))
+        {
+            return (
+                nearby_content_hash(tokens, index, false),
+                nearby_content_hash(tokens, index, true),
+            );
+        }
+        if [b"lose".as_slice(), b"loses", b"lost"]
+            .iter()
+            .any(|word| token_is(tokens, index, word))
+        {
+            return (
+                nearby_content_hash(tokens, index, true),
+                nearby_content_hash(tokens, index, false),
+            );
+        }
+    }
+    (0, 0)
+}
+
 fn is_numeric(token: &Token) -> bool {
     matches!(token.kind, KIND_ZERO | KIND_ONE | KIND_COUNT)
 }
@@ -598,6 +783,34 @@ fn is_metadata_number(tokens: &Tokens, index: usize) -> bool {
         && [b"sha".as_slice(), b"md", b"http", b"tls", b"version"]
             .iter()
             .any(|word| token_is(tokens, index - 1, word))
+}
+
+fn is_denominator_context(tokens: &Tokens, index: usize) -> bool {
+    for distance in 1..=3 {
+        if tokens.values.get(index + distance).is_some_and(|_| {
+            [
+                b"engines".as_slice(),
+                b"providers",
+                b"sources",
+                b"scanners",
+                b"checks",
+            ]
+            .iter()
+            .any(|word| token_is(tokens, index + distance, word))
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
+fn shares_truth_number(ground_truth: &Tokens, answer: &Tokens) -> bool {
+    answer.values[..answer.len].iter().any(|answer_token| {
+        is_numeric(answer_token)
+            && ground_truth.values[..ground_truth.len]
+                .iter()
+                .any(|truth_token| is_numeric(truth_token) && truth_token.hash == answer_token.hash)
+    })
 }
 
 fn numeric_conflict(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) -> bool {
@@ -631,6 +844,13 @@ fn numeric_conflict(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) -
                 matched_slot = true;
             }
         }
+        if !matched_value
+            && numeric_label(answer, answer_index) == 0
+            && is_denominator_context(answer, answer_index)
+            && shares_truth_number(ground_truth, answer)
+        {
+            continue;
+        }
         if !matched_value || !matched_slot {
             return true;
         }
@@ -640,6 +860,7 @@ fn numeric_conflict(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) -
 
 struct Identifiers {
     values: [u64; MAX_IDENTIFIERS],
+    roots: [u64; MAX_IDENTIFIERS],
     len: usize,
 }
 
@@ -647,13 +868,15 @@ impl Identifiers {
     fn new() -> Self {
         Self {
             values: [0; MAX_IDENTIFIERS],
+            roots: [0; MAX_IDENTIFIERS],
             len: 0,
         }
     }
 
-    fn push(&mut self, value: u64) {
+    fn push(&mut self, value: u64, root: u64) {
         if value != 0 && self.len < MAX_IDENTIFIERS && !self.contains(value) {
             self.values[self.len] = value;
+            self.roots[self.len] = root;
             self.len += 1;
         }
     }
@@ -661,6 +884,31 @@ impl Identifiers {
     fn contains(&self, value: u64) -> bool {
         self.values[..self.len].contains(&value)
     }
+}
+
+fn domain_root_hash(host: &[u8]) -> u64 {
+    let mut end = host.len();
+    while end > 0 && host[end - 1] == b'.' {
+        end -= 1;
+    }
+    let host = &host[..end];
+    if host.is_empty()
+        || host
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || *byte == b'.')
+    {
+        return 0;
+    }
+    let Some(last_dot) = host.iter().rposition(|byte| *byte == b'.') else {
+        return 0;
+    };
+    let before_suffix = &host[..last_dot];
+    let root_start = before_suffix
+        .iter()
+        .rposition(|byte| *byte == b'.')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    token_hash(&before_suffix[root_start..])
 }
 
 fn starts_with_ascii(input: &[u8], start: usize, expected: &[u8]) -> bool {
@@ -692,14 +940,15 @@ fn push_url_identifiers(input: &[u8], start: usize, end: usize, output: &mut Ide
     if trimmed_end <= start {
         return;
     }
-    output.push(token_hash(&input[start..trimmed_end]));
     let host_end = input[start..trimmed_end]
         .iter()
         .position(|byte| matches!(byte, b'/' | b'?' | b'#'))
         .map(|offset| start + offset)
         .unwrap_or(trimmed_end);
+    let root = domain_root_hash(&input[start..host_end]);
+    output.push(token_hash(&input[start..trimmed_end]), root);
     if host_end > start {
-        output.push(token_hash(&input[start..host_end]));
+        output.push(token_hash(&input[start..host_end]), root);
     }
 }
 
@@ -755,7 +1004,12 @@ fn extract_identifiers(input: &[u8]) -> Identifiers {
             let domain_like = suffix_is_domain || ipv4_like;
             let hash_like = all_hex && span.len() >= 16;
             if domain_like || hash_like {
-                output.push(token_hash(span));
+                let root = if domain_like && !ipv4_like {
+                    domain_root_hash(span)
+                } else {
+                    0
+                };
+                output.push(token_hash(span), root);
             }
             continue;
         }
@@ -764,13 +1018,24 @@ fn extract_identifiers(input: &[u8]) -> Identifiers {
     output
 }
 
-fn identifier_conflict(question: &[u8], ground_truth: &[u8], answer: &[u8]) -> bool {
+fn identifier_conflict(
+    question: &[u8],
+    ground_truth: &[u8],
+    ground_truth_tokens: &Tokens,
+    answer: &[u8],
+) -> bool {
     let question_ids = extract_identifiers(question);
+    if question_ids.len == 0 {
+        return false;
+    }
     let truth_ids = extract_identifiers(ground_truth);
     let answer_ids = extract_identifiers(answer);
-    answer_ids.values[..answer_ids.len]
-        .iter()
-        .any(|value| !question_ids.contains(*value) && !truth_ids.contains(*value))
+    (0..answer_ids.len).any(|index| {
+        let value = answer_ids.values[index];
+        let named_source =
+            answer_ids.roots[index] != 0 && ground_truth_tokens.contains(answer_ids.roots[index]);
+        !question_ids.contains(value) && !truth_ids.contains(value) && !named_source
+    })
 }
 
 fn entity_conflict(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) -> bool {
@@ -782,20 +1047,53 @@ fn entity_conflict(question: &Tokens, ground_truth: &Tokens, answer: &Tokens) ->
             b"tls",
             b"url",
             b"json",
+            b"dns",
+            b"arin",
+            b"ripe",
+            b"apnic",
+            b"urls",
+            b"inc",
+            b"llc",
         ]
         .iter()
         .any(|word| hash == token_hash(word))
     }
 
-    let truth_has_entity = ground_truth.values[..ground_truth.len].iter().any(|token| {
-        token.proper
-            && token.weight > 1
-            && !metadata_entity(token.hash)
-            && !question.contains(token.hash)
-    });
-    truth_has_entity
+    fn known_entity(hash: u64) -> bool {
+        [
+            b"google".as_slice(),
+            b"cloudflare",
+            b"amazon",
+            b"microsoft",
+            b"oracle",
+            b"akamai",
+            b"fastly",
+            b"openphish",
+            b"urlhaus",
+            b"virustotal",
+            b"phishtank",
+            b"eicar",
+            b"tor",
+        ]
+        .iter()
+        .any(|word| hash == token_hash(word))
+    }
+
+    let truth_entities = ground_truth.values[..ground_truth.len]
+        .iter()
+        .filter(|token| {
+            (token.proper || known_entity(token.hash))
+                && token.weight > 1
+                && !metadata_entity(token.hash)
+                && !question.contains(token.hash)
+        });
+    let answer_preserves_truth_entity = truth_entities
+        .clone()
+        .any(|truth_token| answer.contains(truth_token.hash));
+    !answer_preserves_truth_entity
+        && truth_entities.count() > 0
         && answer.values[..answer.len].iter().any(|token| {
-            token.proper
+            (token.proper || known_entity(token.hash))
                 && token.weight > 1
                 && !metadata_entity(token.hash)
                 && !question.contains(token.hash)
@@ -992,10 +1290,16 @@ fn score_bytes(question: &[u8], ground_truth: &[u8], answer: &[u8]) -> f32 {
     let answer_confirmation = signed_axis(&answer_tokens, |token| token.confirmation);
     let expected_agreement = signed_axis(&ground_truth_tokens, |token| token.agreement);
     let answer_agreement = signed_axis(&answer_tokens, |token| token.agreement);
+    let expected_direction = signed_axis(&ground_truth_tokens, |token| token.direction);
+    let answer_direction = signed_axis(&answer_tokens, |token| token.direction);
+    let expected_scale = scale_axis(&ground_truth_tokens);
+    let answer_scale = scale_axis(&answer_tokens);
+    let expected_relation = winner_loser(&ground_truth_tokens);
+    let answer_relation = winner_loser(&answer_tokens);
     let mut score = overlap(&question_tokens, &ground_truth_tokens, &answer_tokens);
 
     if numeric_conflict(&question_tokens, &ground_truth_tokens, &answer_tokens)
-        || identifier_conflict(question, ground_truth, answer)
+        || identifier_conflict(question, ground_truth, &ground_truth_tokens, answer)
         || entity_conflict(&question_tokens, &ground_truth_tokens, &answer_tokens)
         || (expected_confirmation != 0
             && answer_confirmation != 0
@@ -1003,6 +1307,13 @@ fn score_bytes(question: &[u8], ground_truth: &[u8], answer: &[u8]) -> f32 {
         || (expected_agreement != 0
             && answer_agreement != 0
             && expected_agreement != answer_agreement)
+        || (expected_direction != 0
+            && answer_direction != 0
+            && expected_direction != answer_direction)
+        || (expected_scale != 0 && answer_scale != 0 && expected_scale != answer_scale)
+        || (expected_relation.0 != 0
+            && answer_relation.0 != 0
+            && expected_relation != answer_relation)
     {
         return 0.0;
     }
@@ -1020,6 +1331,8 @@ fn score_bytes(question: &[u8], ground_truth: &[u8], answer: &[u8]) -> f32 {
     }
     if (expected_confirmation != 0 && expected_confirmation == answer_confirmation)
         || (expected_agreement != 0 && expected_agreement == answer_agreement)
+        || (expected_direction != 0 && expected_direction == answer_direction)
+        || (expected_relation.0 != 0 && expected_relation == answer_relation)
     {
         return 1.0;
     }
@@ -1229,6 +1542,17 @@ mod tests {
                 "That address is a Cloudflare edge with 8 malicious hits.",
             )
         );
+        assert!(
+            score(
+                "Which vendor disclosed the flaw?",
+                "Microsoft disclosed it.",
+                "Microsoft, in a Patch Tuesday advisory.",
+            ) > score(
+                "Which vendor disclosed the flaw?",
+                "Microsoft disclosed it.",
+                "Oracle disclosed it.",
+            )
+        );
     }
 
     #[test]
@@ -1284,7 +1608,12 @@ mod tests {
             "numeric conflict"
         );
         assert!(
-            !identifier_conflict(question.as_bytes(), truth.as_bytes(), good.as_bytes()),
+            !identifier_conflict(
+                question.as_bytes(),
+                truth.as_bytes(),
+                &truth_tokens,
+                good.as_bytes()
+            ),
             "identifier conflict"
         );
         assert!(
@@ -1354,5 +1683,133 @@ mod tests {
             assert!(first.is_finite() && (0.0..=1.0).contains(&first));
             assert_eq!(first, second);
         }
+    }
+
+    #[test]
+    fn normalizes_confirmation_and_support_paraphrases() {
+        assert_eq!(
+            score(
+                "Was the checksum confirmed?",
+                "The published checksum matches the file.",
+                "The file hash is identical to the published checksum.",
+            ),
+            1.0,
+        );
+        assert_eq!(
+            score(
+                "Does the evidence support the claim?",
+                "No, the evidence does not support the claim.",
+                "The claim is unsupported by the evidence.",
+            ),
+            1.0,
+        );
+    }
+
+    #[test]
+    fn recognizes_credential_theft_and_contextual_denominators() {
+        assert!(
+            score(
+                "What did the URL scan conclude?",
+                "The page hosts a credential harvesting form.",
+                "It captures logins through a fake sign-in box.",
+            ) > score(
+                "What did the URL scan conclude?",
+                "The page hosts a credential harvesting form.",
+                "The page hosts only static documentation.",
+            )
+        );
+        assert!(
+            score(
+                "What is the detection count?",
+                "The sample has 12 detections.",
+                "12 detections, out of the 71 engines that ran.",
+            ) > score(
+                "What is the detection count?",
+                "The sample has 12 detections.",
+                "The sample has 2 detections.",
+            )
+        );
+    }
+
+    #[test]
+    fn normalizes_direction_and_scale_paraphrases() {
+        assert_eq!(
+            score(
+                "What happened to gas prices?",
+                "They fell sharply.",
+                "They came down a long way.",
+            ),
+            1.0,
+        );
+        assert_eq!(
+            score(
+                "Did the token rise or fall?",
+                "It rose, closing 12 percent higher.",
+                "It did not fall; it closed up 12 percent.",
+            ),
+            1.0,
+        );
+        assert!(
+            score("What is TVL?", "2.4 billion dollars.", "$2.4B.")
+                > score(
+                    "What is TVL?",
+                    "2.4 billion dollars.",
+                    "2.4 million dollars."
+                )
+        );
+    }
+
+    #[test]
+    fn accepts_named_source_domains_and_rejects_provider_swaps() {
+        assert_eq!(
+            score(
+                "Is http://free-prize-claim.info/win phishing?",
+                "Yes, it is a phishing page listed by OpenPhish.",
+                "It is phishing. OpenPhish (openphish.com) carries the listing.",
+            ),
+            1.0,
+        );
+        assert!(
+            score(
+                "Who operates 8.8.4.4?",
+                "Google operates it as a public DNS resolver.",
+                "It is one of Google's public resolvers, per ARIN.",
+            ) > score(
+                "Who operates 8.8.4.4?",
+                "Google operates it as a public DNS resolver.",
+                "Cloudflare operates it as a public DNS resolver.",
+            )
+        );
+        assert!(
+            score(
+                "Is the URL on a blocklist?",
+                "Yes, it is on the URLhaus blocklist.",
+                "It is listed on URLhaus, which tracks malware URLs for abuse.ch.",
+            ) > score(
+                "Is the URL on a blocklist?",
+                "Yes, it is on the URLhaus blocklist.",
+                "No, it is on no blocklist.",
+            )
+        );
+    }
+
+    #[test]
+    fn normalizes_reversed_win_loss_phrasing() {
+        assert_eq!(
+            score(
+                "Which team won the final?",
+                "Italy beat England on penalties.",
+                "England lost to Italy in the shoot-out.",
+            ),
+            1.0,
+        );
+        assert_eq!(
+            score(
+                "Which team won the final?",
+                "Italy beat England on penalties.",
+                "England beat Italy on penalties.",
+            ),
+            0.0,
+        );
     }
 }
