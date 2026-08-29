@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  async rewrites() {
+    return [
+      {
+        source: "/scan",
+        destination: "/api/miner/scan",
+      },
+    ];
+  },
   async headers() {
     return [
       {
