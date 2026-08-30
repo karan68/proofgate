@@ -1,18 +1,11 @@
-import { z } from "zod";
-
 import { rateLimitError } from "@/lib/proofgate/access";
 import { apiError, publicCorsHeaders } from "@/lib/proofgate/api";
 import { scanUrlWithEvidence } from "@/lib/proofgate/miner";
+import { scanUrlFromBody } from "@/lib/proofgate/miner-request";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 export const runtime = "nodejs";
-
-const requestSchema = z
-  .object({
-    url: z.string().trim().min(1).max(2_048),
-  })
-  .strict();
 
 export async function GET() {
   return Response.json(
@@ -45,7 +38,7 @@ export async function POST(request: Request) {
       return limitError;
     }
 
-    const { url } = requestSchema.parse(await request.json());
+    const url = scanUrlFromBody(await request.json());
     return Response.json(await scanUrlWithEvidence(url), {
       headers: publicCorsHeaders,
     });
