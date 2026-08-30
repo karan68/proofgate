@@ -25,8 +25,13 @@ At the end of verification:
 - The production payer private key is not configured.
 - Track 2 registrations used Base Sepolia gas only; no x402 or USDC payment was
   made.
-- Replacement registration `310` is active for `URL_SCAN`.
-- Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified.
+- Replacement registration `384` is active for `URL_SCAN`; registration `310`
+  was atomically deregistered by the update.
+- Registration `384` pins YAML SHA-256
+  `9ba61d88467c40d56cb4b301096842c9264c00a32c3f5801e37e4e1b50ab1328`
+  and explicitly declares the endpoint intent plus required `url` body parameter.
+- Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified
+  with item `384`.
 - Track 2 registrations `1810`, `1814`, and `1816` were each rejected at 12/15
   hidden ordering wins. There is no accepted ProofGate Track 2 registration.
 - Track 2 portal submission `6a9320d4ae9ddfbc70a760db` is saved and verified,

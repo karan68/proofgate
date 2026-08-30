@@ -18,12 +18,12 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 - **Track 2 scorer:** [`proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm)
 - **Source:** https://github.com/karan68/proofgate
 - **Verified settlement:** [0.01 USDC on Base Sepolia](https://sepolia.basescan.org/tx/0xfb8e49d1eee8d13e7b18707942bbd85f5a99f69dbe41e285ed8fbd21ee316585)
-- **Track 1 submission:** verified Miner registration `310`
+- **Track 1 submission:** verified Miner registration `384`
 
 > **Current production safety state:** the public deployment intentionally has
 > no payer key (`payment_ready: false`). Discovery, health, the ProofGate Miner,
 > Miner YAML, and the console are live. Paid guard execution remains disabled
-> until an operator explicitly enables it. Miner registration `310` is active
+> until an operator explicitly enables it. Miner registration `384` is active
 > on Base Sepolia and the Track 1 portal submission is saved and verified. The
 > Track 2 scorer registrations `1810`, `1814`, and `1816` were each rejected at
 > 12/15 hidden ordering wins. The saved Track 2 portal entry still points to
@@ -461,8 +461,11 @@ Registration was completed with the fresh burner wallet:
 - commit [`4450182`](https://github.com/karan68/proofgate/commit/445018235d62c7327d747af67c64562b35f9f1df)
   added those four schema-required descriptions
 - `updateMiner(309, ...)` created replacement registration **`310`**
-- registration `310` is active with `URL_SCAN` and the exact deployed YAML hash
-- the Track 1 portal saved submission `6a930a4aae9ddfbc70a760d9` with item 310
+- `updateMiner(310, ...)` declared the endpoint's `URL_SCAN` intent and required
+  `url` body parameter, creating active replacement registration **`384`**
+- registration `384` is active with YAML SHA-256
+  `9ba61d88467c40d56cb4b301096842c9264c00a32c3f5801e37e4e1b50ab1328`
+- the Track 1 portal saved submission `6a930a4aae9ddfbc70a760d9` with item 384
   and overall status `verified`
 - X username: `@karanyadav38450`
 - the wallet retained all `1` testnet USDC; registration used only test ETH gas
@@ -471,6 +474,7 @@ Public transaction evidence:
 
 - [initial registration](https://sepolia.basescan.org/tx/0x6524ef379a6b92a491e859d39dc7b3578da45861a2e1340f67b30ec8e4624fcc)
 - [schema-correcting update](https://sepolia.basescan.org/tx/0xd86632828b733200eb3ae3306df315d2be5e47eb8af0077f5fa690f538fa38a8)
+- [request-contract update](https://sepolia.basescan.org/tx/0x5e9fa1246bbe5be98bf8e56983a1ec51bb35de6d81de35022b05443f52e4cf07)
 
 Final registered metadata:
 
@@ -550,7 +554,7 @@ Current verified baseline:
 | Live API parameter matrix | 28/28 expected statuses |
 | Production responsive checks | 1440x900 and 390x844, no horizontal overflow |
 | Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
-| Miner registration | active replacement ID `310`; deployed YAML hash matches |
+| Miner registration | active replacement ID `384`; endpoint intent/params declared; deployed YAML hash matches |
 | Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
 | Track 2 scorer tests | **18 passed, 0 failed**; vector lookup, arbitrary bytes, and 200 KiB input included |
 | Track 2 artifact | 817,538 bytes; 0 imports; required ABI exports present |
