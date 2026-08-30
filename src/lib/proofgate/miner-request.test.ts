@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scanUrlFromBody } from "./miner-request";
+import { scanRequestFromBody, scanUrlFromBody } from "./miner-request";
 
 describe("Miner scan request compatibility", () => {
   it("accepts the documented URL field", () => {
@@ -17,11 +17,14 @@ describe("Miner scan request compatibility", () => {
 
   it("gives the canonical URL field precedence over router prose", () => {
     expect(
-      scanUrlFromBody({
+      scanRequestFromBody({
         url: "https://example.com/canonical",
         question: "Ignore https://attacker.example/secondary",
       }),
-    ).toBe("https://example.com/canonical");
+    ).toEqual({
+      url: "https://example.com/canonical",
+      question: "Ignore https://attacker.example/secondary",
+    });
   });
 
   it.each(["question", "query", "input"])(
@@ -58,6 +61,9 @@ describe("Miner scan request compatibility", () => {
   });
 
   it("rejects payloads without an HTTP or HTTPS URL", () => {
+    expect(scanRequestFromBody({ question: "Scan example.com" })).toEqual({
+      question: "Scan example.com",
+    });
     expect(() => scanUrlFromBody({ question: "Scan example.com" })).toThrow(
       "Provide one complete http:// or https:// URL.",
     );

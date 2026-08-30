@@ -3,6 +3,10 @@ import { Buffer } from "node:buffer";
 import { z } from "zod";
 
 import {
+  findHistoricalUrlIncident,
+  type HistoricalUrlMatch,
+} from "./historical-url-intel";
+import {
   assertPublicTarget,
   type AddressLookup,
   type ValidatedTarget,
@@ -16,10 +20,19 @@ export type EvidenceStatus =
   | "error";
 
 export interface SourceEvidence {
-  source: "structure" | "dns" | "rdap" | "phishtank" | "google" | "urlhaus" | "virustotal";
+  source: "structure" | "dns" | "rdap" | "phishtank" | "google" | "urlhaus" | "virustotal" | "history";
   status: EvidenceStatus;
   detail: string;
   reference?: string;
+}
+
+export interface HistoricalContext {
+  id: string;
+  name: string;
+  disposition: "malicious" | "defensive" | "demonstration";
+  matched_by: "hostname" | "question";
+  facts: readonly string[];
+  sources: readonly { name: string; url: string }[];
 }
 
 export interface MinerScanResult {
@@ -29,10 +42,14 @@ export interface MinerScanResult {
   verdict: "safe" | "suspicious" | "malicious";
   malicious: boolean;
   confidence: number;
+  answer: string;
   reason: string;
+  live_reason: string | null;
+  live_scan_performed: boolean;
+  historical_context: HistoricalContext | null;
   evidence: SourceEvidence[];
   checked_at: string;
-  policy_version: "proofgate-1";
+  policy_version: "proofgate-2";
 }
 
 export interface MinerScanOptions {
@@ -43,6 +60,7 @@ export interface MinerScanOptions {
   googleSafeBrowsingKey?: string;
   urlHausAuthKey?: string;
   virusTotalApiKey?: string;
+  question?: string;
 }
 
 const phishTankSchema = z.object({
@@ -501,6 +519,7 @@ export function aggregateEvidence(
   );
 
   if (malicious.length > 0) {
+    const reason = `malicious: ${malicious.map((item) => item.detail).join(" ")}`;
     return {
       schema_version: "1.0",
       intent: "URL_SCAN",
@@ -508,14 +527,19 @@ export function aggregateEvidence(
       verdict: "malicious",
       malicious: true,
       confidence: malicious.length > 1 ? 0.995 : 0.97,
-      reason: `malicious: ${malicious.map((item) => item.detail).join(" ")}`,
+      answer: reason,
+      reason,
+      live_reason: reason,
+      live_scan_performed: true,
+      historical_context: null,
       evidence,
       checked_at: checkedAt.toISOString(),
-      policy_version: "proofgate-1",
+      policy_version: "proofgate-2",
     };
   }
 
   if (suspicious.length > 0) {
+    const reason = `suspicious: ${suspicious.map((item) => item.detail).join(" ")}`;
     return {
       schema_version: "1.0",
       intent: "URL_SCAN",
@@ -523,15 +547,23 @@ export function aggregateEvidence(
       verdict: "suspicious",
       malicious: false,
       confidence: cleanReputation.length > 0 ? 0.72 : 0.62,
-      reason: `suspicious: ${suspicious.map((item) => item.detail).join(" ")}`,
+      answer: reason,
+      reason,
+      live_reason: reason,
+      live_scan_performed: true,
+      historical_context: null,
       evidence,
       checked_at: checkedAt.toISOString(),
-      policy_version: "proofgate-1",
+      policy_version: "proofgate-2",
     };
   }
 
   const confidence = cleanReputation.length >= 2 ? 0.96 : cleanReputation.length === 1 ? 0.86 : 0.65;
   const cleanNames = cleanReputation.map((item) => item.source).join(", ");
+  const reason =
+    cleanReputation.length > 0
+      ? `safe: no threat match from ${cleanNames}; public DNS and URL policy checks completed.`
+      : "safe with limited confidence: public DNS and URL policy checks passed, but no reputation provider returned a clean verdict.";
   return {
     schema_version: "1.0",
     intent: "URL_SCAN",
@@ -539,13 +571,98 @@ export function aggregateEvidence(
     verdict: "safe",
     malicious: false,
     confidence,
-    reason:
-      cleanReputation.length > 0
-        ? `safe: no threat match from ${cleanNames}; public DNS and URL policy checks completed.`
-        : "safe with limited confidence: public DNS and URL policy checks passed, but no reputation provider returned a clean verdict.",
+    answer: reason,
+    reason,
+    live_reason: reason,
+    live_scan_performed: true,
+    historical_context: null,
     evidence,
     checked_at: checkedAt.toISOString(),
-    policy_version: "proofgate-1",
+    policy_version: "proofgate-2",
+  };
+}
+
+function historicalContext(match: HistoricalUrlMatch): HistoricalContext {
+  return {
+    id: match.incident.id,
+    name: match.incident.name,
+    disposition: match.incident.disposition,
+    matched_by: match.matched_by,
+    facts: match.incident.facts,
+    sources: match.incident.sources,
+  };
+}
+
+export function addHistoricalContext(
+  result: MinerScanResult,
+  question?: string,
+): MinerScanResult {
+  const match = findHistoricalUrlIncident({ url: result.url, question });
+  if (!match) return result;
+
+  const historicalAnswer = match.incident.facts.join(" ");
+  const answer =
+    match.matched_by === "hostname"
+      ? historicalAnswer
+      : `Live URL assessment: ${result.live_reason} Historical context: ${historicalAnswer}`;
+  return {
+    ...result,
+    answer,
+    reason: answer,
+    historical_context: historicalContext(match),
+  };
+}
+
+export function answerHistoricalUrlQuestion(
+  question: string | undefined,
+  checkedAt = new Date(),
+): MinerScanResult {
+  const match = findHistoricalUrlIncident({ question });
+  if (match) {
+    const answer = match.incident.facts.join(" ");
+    const historicalStatus = match.incident.disposition === "malicious" ? "malicious" : "clean";
+    return {
+      schema_version: "1.0",
+      intent: "URL_SCAN",
+      url: "",
+      verdict: match.incident.disposition === "malicious" ? "malicious" : "safe",
+      malicious: match.incident.disposition === "malicious",
+      confidence: 1,
+      answer,
+      reason: answer,
+      live_reason: null,
+      live_scan_performed: false,
+      historical_context: historicalContext(match),
+      evidence: [
+        {
+          source: "history",
+          status: historicalStatus,
+          detail: `Matched the bounded historical record for ${match.incident.name}.`,
+          reference: match.incident.sources[0]?.url,
+        },
+      ],
+      checked_at: checkedAt.toISOString(),
+      policy_version: "proofgate-2",
+    };
+  }
+
+  const answer =
+    "No complete HTTP or HTTPS URL was provided, and the question did not match ProofGate's bounded historical incident catalog. No URL or campaign verdict is claimed.";
+  return {
+    schema_version: "1.0",
+    intent: "URL_SCAN",
+    url: "",
+    verdict: "suspicious",
+    malicious: false,
+    confidence: 0,
+    answer,
+    reason: answer,
+    live_reason: null,
+    live_scan_performed: false,
+    historical_context: null,
+    evidence: [{ source: "history", status: "unavailable", detail: answer }],
+    checked_at: checkedAt.toISOString(),
+    policy_version: "proofgate-2",
   };
 }
 
@@ -597,5 +714,8 @@ export async function scanUrlWithEvidence(
     ),
   ]);
 
-  return aggregateEvidence(target.url, [...evidence, ...remoteEvidence], now);
+  return addHistoricalContext(
+    aggregateEvidence(target.url, [...evidence, ...remoteEvidence], now),
+    options.question,
+  );
 }

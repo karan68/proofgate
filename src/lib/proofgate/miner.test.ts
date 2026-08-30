@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  answerHistoricalUrlQuestion,
   aggregateEvidence,
   scanUrlWithEvidence,
   type SourceEvidence,
@@ -237,5 +238,87 @@ describe("Miner provider contracts", () => {
       String(requests.find((request) => request.url.includes("safebrowsing"))?.init?.body),
     );
     expect(googleBody.threatInfo.threatEntries).toEqual([{ url: "https://example.com/" }]);
+  });
+});
+
+describe("Miner historical answers", () => {
+  it("answers a known no-URL campaign question without claiming a live scan", () => {
+    const result = answerHistoricalUrlQuestion(
+      "What is documented about Microsoft's 2020 takedown of Necurs?",
+      checkedAt,
+    );
+
+    expect(result).toMatchObject({
+      verdict: "malicious",
+      malicious: true,
+      live_scan_performed: false,
+      live_reason: null,
+      historical_context: { id: "necurs", matched_by: "question" },
+    });
+    expect(result.answer).toContain("more than nine million computers");
+    expect(result.answer).toContain("more than six million unique domains");
+  });
+
+  it("abstains from an unknown no-URL campaign question", () => {
+    const result = answerHistoricalUrlQuestion(
+      "What domains did the Example Nebula campaign use?",
+      checkedAt,
+    );
+
+    expect(result).toMatchObject({
+      confidence: 0,
+      malicious: false,
+      live_scan_performed: false,
+      historical_context: null,
+    });
+    expect(result.answer).toContain("No URL or campaign verdict is claimed");
+  });
+
+  it("keeps a legitimate publisher verdict separate from Mirai context", async () => {
+    const result = await scanUrlWithEvidence("https://github.com/example/mirai-source-code", {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return Response.json({
+            events: [{ eventAction: "registration", eventDate: "2007-10-09T00:00:00Z" }],
+          });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => ["140.82.112.4"],
+      now: checkedAt,
+      question: "What domains were documented after the Mirai source code release?",
+    });
+
+    expect(result).toMatchObject({
+      verdict: "safe",
+      malicious: false,
+      live_scan_performed: true,
+      historical_context: { id: "mirai", matched_by: "question" },
+    });
+    expect(result.live_reason).toContain("safe with limited confidence");
+    expect(result.answer).toContain("Live URL assessment: safe");
+    expect(result.answer).toContain("Historical context:");
+  });
+
+  it("does not let historical context erase a live structural warning", async () => {
+    const result = await scanUrlWithEvidence("http://example.com/file.exe", {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return Response.json({
+            events: [{ eventAction: "registration", eventDate: "1995-01-01T00:00:00Z" }],
+          });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => ["93.184.216.34"],
+      now: checkedAt,
+      question: "What is documented about Emotet infrastructure?",
+    });
+
+    expect(result).toMatchObject({
+      verdict: "suspicious",
+      historical_context: { id: "emotet", matched_by: "question" },
+    });
+    expect(result.live_reason).toContain("executable download path");
   });
 });

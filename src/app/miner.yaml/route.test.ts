@@ -42,6 +42,12 @@ describe("miner.yaml route", () => {
         intents: ["URL_SCAN"],
       }),
     ]);
+    expect(config.input_schema.properties.question).toMatchObject({
+      type: "string",
+      maxLength: 4096,
+    });
+    expect(config.output_schema.required).toContain("answer");
+    expect(config.semantics.signal_mapping.reason_field).toBe("answer");
     const mappedFields = [
       ...config.on_chain.fields.strings,
       ...config.on_chain.fields.integers,

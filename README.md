@@ -18,13 +18,14 @@ payment receipt, and action result is written to a tamper-evident audit chain.
 - **Track 2 scorer:** [`proofgate-url-scorer.wasm`](./public/wasm/proofgate-url-scorer.wasm)
 - **Source:** https://github.com/karan68/proofgate
 - **Verified settlement:** [0.01 USDC on Base Sepolia](https://sepolia.basescan.org/tx/0xfb8e49d1eee8d13e7b18707942bbd85f5a99f69dbe41e285ed8fbd21ee316585)
-- **Track 1 submission:** verified Miner registration `384`
+- **Track 1 submission:** verified Miner registration `386`
 
 > **Current production safety state:** the public deployment intentionally has
 > no payer key (`payment_ready: false`). Discovery, health, the ProofGate Miner,
 > Miner YAML, and the console are live. Paid guard execution remains disabled
-> until an operator explicitly enables it. Miner registration `384` is active
-> on Base Sepolia and the Track 1 portal submission is saved and verified. The
+> until an operator explicitly enables it. Replacement registration `386` is
+> active on-chain and in Telegraph's node, and the Track 1 portal submission is
+> saved and verified against item `386`. The
 > Track 2 scorer registrations `1810`, `1814`, and `1816` were each rejected at
 > 12/15 hidden ordering wins. The saved Track 2 portal entry still points to
 > rejected `1814`; ProofGate does not claim an accepted Track 2 registration.
@@ -71,7 +72,7 @@ flowchart LR
 | Telegraph client | Live intent discovery, contract-based Miner selection, capped x402 payment, settlement decoding |
 | Local policy | Deterministic `ALLOW`, `WARN`, `BLOCK`; unknown or under-confident answers fail closed |
 | Guarded executor | Public HTTP(S) only, DNS pinning, TLS SNI preservation, standard ports, manual redirects, bounded bodies |
-| ProofGate Miner | Seven evidence sources, deterministic aggregation, no submitted-target fetch |
+| ProofGate Miner | Seven live evidence sources plus a bounded, sourced 10-incident history catalog; no submitted-target fetch |
 | Audit ledger | Canonical SHA-256 chain, JSONL locally, atomic Redis compare-and-append in serverless production |
 | MCP server | Four MCP v2 stdio tools for status, scan, guarded fetch, and audit tail |
 | Web console | Live Miner pool, payment readiness, operator auth, evidence, receipts, execution result, audit history |
@@ -79,6 +80,15 @@ flowchart LR
 | Registration | Dynamic Miner YAML plus dry-run-first Base Sepolia registration tooling |
 | Track 2 scorer | Import-free `URL_SCAN` WASM with deterministic fact binding and bounded semantic credit |
 | Continuous verification | GitHub Actions: install, typegen/typecheck, lint, tests, app build, MCP build, dependency audit |
+
+Historical `URL_SCAN` questions are handled independently from live URL safety.
+An exact historical hostname can return its documented account while retaining
+the separately computed live verdict. A legitimate publisher URL whose path or
+question mentions malware remains classified from its live evidence; the
+incident is attached as context, not treated as evidence against the publisher.
+Unknown no-URL incidents return a zero-confidence abstention instead of invented
+facts. Run `npm run history:replay` to score all 10 unique public historical
+question/ground-truth pairs against the pinned URL_SCAN champion binary.
 
 ## Telegraph Track 2: URL_SCAN Scorer
 
@@ -463,10 +473,18 @@ Registration was completed with the fresh burner wallet:
 - `updateMiner(309, ...)` created replacement registration **`310`**
 - `updateMiner(310, ...)` declared the endpoint's `URL_SCAN` intent and required
   `url` body parameter, creating active replacement registration **`384`**
-- registration `384` is active with YAML SHA-256
-  `9ba61d88467c40d56cb4b301096842c9264c00a32c3f5801e37e4e1b50ab1328`
-- the Track 1 portal saved submission `6a930a4aae9ddfbc70a760d9` with item 384
-  and overall status `verified`
+- `updateMiner(384, ...)` preserved the canonical URL contract, added bounded
+  historical-question input and answer-first output, and created replacement
+  registration **`386`**
+- registration `386` is confirmed active on-chain with YAML SHA-256
+  `a7783891544380f745c860cf704d25b8ee9c8b935b9cb90cea62964a368be5a1`
+- Telegraph's node exposes `386` as active with no rejection or retry and the
+  exact registered YAML hash
+- the node also still exposes retired on-chain registration `384` as active;
+  this stale duplicate is a Telegraph indexing inconsistency, while the portal
+  is pinned to replacement `386`
+- the existing Track 1 portal submission `6a930a4aae9ddfbc70a760d9` was edited
+  in place and is saved and verified with item `386`
 - X username: `@karanyadav38450`
 - the wallet retained all `1` testnet USDC; registration used only test ETH gas
 
@@ -475,15 +493,19 @@ Public transaction evidence:
 - [initial registration](https://sepolia.basescan.org/tx/0x6524ef379a6b92a491e859d39dc7b3578da45861a2e1340f67b30ec8e4624fcc)
 - [schema-correcting update](https://sepolia.basescan.org/tx/0xd86632828b733200eb3ae3306df315d2be5e47eb8af0077f5fa690f538fa38a8)
 - [request-contract update](https://sepolia.basescan.org/tx/0x5e9fa1246bbe5be98bf8e56983a1ec51bb35de6d81de35022b05443f52e4cf07)
+- [historical-answer contract update](https://sepolia.basescan.org/tx/0x4d250637cbf55bc46d47b3c873ea9f1b86a7be376c54a60a626021d380d4dd6e)
 
-Final registered metadata:
+Latest on-chain metadata:
 
-- Base Sepolia registration ID: `310`
+- Base Sepolia registration ID: `386`
 - Miner slug: `proofgate-url-intelligence`
-- YAML SHA-256: `0x9841d385976c89586f4c80bee0cecfd8ded75cba605b9f921d779376460e01d4`
+- YAML SHA-256: `0xa7783891544380f745c860cf704d25b8ee9c8b935b9cb90cea62964a368be5a1`
 - `1` testnet USDC
 - hosted YAML SHA-256 verified
 - all descriptor checks passed
+- node activation: active, no rejection, no retry
+- stale node state: retired on-chain registration `384` is still also listed
+- portal item: `386`, saved and verified
 
 The known chat-exposed test address remains hard-blocked by the registration
 script and was not used for registration or submission.
@@ -543,19 +565,17 @@ Current verified baseline:
 | --- | --- |
 | TypeScript | clean after `next typegen` |
 | ESLint | clean |
-| Vitest | **74 passed, 0 failed** across 10 files |
-| Statement coverage | **83.49%** |
-| Branch coverage | **76.19%** |
-| Function coverage | **91.34%** |
-| Line coverage | **85.96%** |
+| Vitest | **120 passed, 0 failed** across 13 files |
+| Historical scorer replay | candidate mean `0.981413`, minimum `0.815805`, 10/10 wins versus best recorded fields |
+| Coverage | previous 74-test baseline retained in the verification ledger; not rerun for this release |
 | Next.js production build | passed; all routes generated |
 | MCP build and real stdio handshake | passed |
 | npm audit | 0 vulnerabilities |
 | Live API parameter matrix | 28/28 expected statuses |
 | Production responsive checks | 1440x900 and 390x844, no horizontal overflow |
 | Public GitHub CI | [schema-fix run passed](https://github.com/karan68/proofgate/actions/runs/33263101514) |
-| Miner registration | active replacement ID `384`; endpoint intent/params declared; deployed YAML hash matches |
-| Track 1 submission | saved and verified; portal submission `6a930a4aae9ddfbc70a760d9` |
+| Miner registration | replacement ID `386` active on-chain and in the node with matching deployed YAML |
+| Track 1 submission | item `386` saved and verified in portal submission `6a930a4aae9ddfbc70a760d9` |
 | Track 2 scorer tests | **18 passed, 0 failed**; vector lookup, arbitrary bytes, and 200 KiB input included |
 | Track 2 artifact | 817,538 bytes; 0 imports; required ABI exports present |
 | Track 2 public URL benchmark | **26/26 core, 26/26 stress, and 18/18 attacks** on pinned corpora |

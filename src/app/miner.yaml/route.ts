@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       protocol: "generic",
       name: "ProofGate URL Intelligence",
       description:
-        "Deterministic pre-execution URL intelligence for autonomous agents. Aggregates phishing, malware, DNS, domain-age, and URL-structure evidence without visiting the submitted target.",
+        "Deterministic pre-execution URL intelligence for autonomous agents. Aggregates phishing, malware, DNS, domain-age, URL-structure, and bounded sourced historical-incident evidence without visiting the submitted target.",
       base_url: baseUrl,
       rate_limit_per_sec: 5,
       cache_ttl_sec: 60,
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
           external_path: "/api/miner/scan",
           method: "POST",
           description:
-            "Return a normalized safe, suspicious, or malicious verdict with confidence and source-level evidence.",
+            "Return a normalized live URL verdict and a scorer-readable answer, with sourced historical context when the request names a documented incident.",
           intents: ["URL_SCAN"],
           params: {
             body: {
@@ -87,6 +87,12 @@ export async function GET(request: NextRequest) {
             maxLength: 2048,
             description: "The public HTTP or HTTPS URL to evaluate.",
           },
+          question: {
+            type: "string",
+            maxLength: 4096,
+            description:
+              "Optional original URL_SCAN question, retained to distinguish live URL safety from documented historical incident context.",
+          },
         },
       },
       output_schema: {
@@ -98,7 +104,11 @@ export async function GET(request: NextRequest) {
           "verdict",
           "malicious",
           "confidence",
+          "answer",
           "reason",
+          "live_reason",
+          "live_scan_performed",
+          "historical_context",
           "evidence",
           "checked_at",
           "policy_version",
@@ -110,7 +120,11 @@ export async function GET(request: NextRequest) {
           verdict: { type: "string", enum: ["safe", "suspicious", "malicious"] },
           malicious: { type: "boolean" },
           confidence: { type: "number", minimum: 0, maximum: 1 },
+          answer: { type: "string" },
           reason: { type: "string" },
+          live_reason: { type: ["string", "null"] },
+          live_scan_performed: { type: "boolean" },
+          historical_context: { type: ["object", "null"] },
           evidence: { type: "array", items: { type: "object" } },
           checked_at: { type: "string", format: "date-time" },
           policy_version: { type: "string" },
@@ -120,7 +134,7 @@ export async function GET(request: NextRequest) {
         signal_mapping: {
           confidence_field: "confidence",
           label_field: "verdict",
-          reason_field: "reason",
+          reason_field: "answer",
         },
         supported_intents: ["URL_SCAN"],
       },
@@ -179,6 +193,14 @@ export async function GET(request: NextRequest) {
           param: "url",
           property: "length",
           value_num: 2048,
+          operator: "lte",
+        },
+        {
+          code: "MAX_PARAM_VALUE",
+          message: "Question context is limited to 4,096 characters.",
+          param: "question",
+          property: "length",
+          value_num: 4096,
           operator: "lte",
         },
       ],

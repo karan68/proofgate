@@ -4,7 +4,7 @@ This document records what was tested, how it was tested, and which evidence is
 live, historical, simulated, or still pending. It exists to prevent screenshots,
 fixtures, mocks, and dry runs from being mistaken for production transactions.
 
-Last updated: **2026-08-29**
+Last updated: **2026-08-31**
 
 ## Evidence Classes
 
@@ -25,13 +25,19 @@ At the end of verification:
 - The production payer private key is not configured.
 - Track 2 registrations used Base Sepolia gas only; no x402 or USDC payment was
   made.
-- Replacement registration `384` is active for `URL_SCAN`; registration `310`
-  was atomically deregistered by the update.
-- Registration `384` pins YAML SHA-256
-  `9ba61d88467c40d56cb4b301096842c9264c00a32c3f5801e37e4e1b50ab1328`
-  and explicitly declares the endpoint intent plus required `url` body parameter.
+- Replacement registration `386` is confirmed active on-chain for `URL_SCAN`;
+  registration `384` was atomically deregistered by the update.
+- Registration `386` pins YAML SHA-256
+  `a7783891544380f745c860cf704d25b8ee9c8b935b9cb90cea62964a368be5a1`
+  and declares the canonical `url`, optional `question`, answer-first output,
+  and historical-context contract.
+- Telegraph's node exposes `386` as active with no rejection, zero fetch
+  retries, `retrying: false`, and the exact registered YAML hash.
+- The node still also returns retired on-chain registration `384` as active.
+  This stale duplicate is recorded as a Telegraph indexing inconsistency; the
+  Track 1 portal targets replacement `386`.
 - Track 1 submission `6a930a4aae9ddfbc70a760d9` is saved and verified
-  with item `384`.
+  with item `386` after an in-place edit; no duplicate submission was created.
 - Track 2 registrations `1810`, `1814`, and `1816` were each rejected at 12/15
   hidden ordering wins. There is no accepted ProofGate Track 2 registration.
 - Track 2 portal submission `6a9320d4ae9ddfbc70a760db` is saved and verified,
@@ -39,6 +45,16 @@ At the end of verification:
 - No payment or transaction was initiated while preparing README screenshots.
 
 ## Automated Baseline
+
+Current regression gate after the historical URL intelligence change:
+
+```text
+Test Files  13 passed (13)
+Tests       120 passed (120)
+```
+
+The previous coverage-instrumented baseline remains recorded below; coverage
+was not rerun for this release, so its percentages are not presented as current.
 
 Command:
 
@@ -79,6 +95,38 @@ Verified results:
 | MCP v2 initialization and tool listing | passed |
 | npm audit | 0 vulnerabilities |
 | GitHub Actions | [schema-fix run 33263101514: success](https://github.com/karan68/proofgate/actions/runs/33263101514) |
+
+### Historical URL intelligence replay
+
+Command:
+
+```powershell
+npm run history:replay
+```
+
+The replay downloads two immutable artifacts: the 180 public URL_SCAN receipts
+at Preflight commit `e9cf33d5aaa24ba5c620b12dc076abc29de53ac0`, and the current
+URL_SCAN champion binary from scorer commit
+`0174a85639c398a0e898dcb11b54367eb2723b2b`. It verifies 180 receipt rows and 10
+unique question/ground-truth pairs before scoring.
+
+| Result | Observed |
+| --- | ---: |
+| Champion replay Spearman across epochs 260-290 | `0.892517` (usable, not exact) |
+| Historical candidate mean | `0.981413` |
+| Historical candidate minimum | `0.815805` |
+| Previous generic ProofGate fallback mean | `0.077843` |
+| Best recorded field mean per pair | `0.337287` |
+| Candidate versus best recorded field | `10 wins, 0 ties, 0 losses` |
+
+Telegraph's API declares champion hash
+`71581b142ca88090e795ffaaa95442e7403c49018f94e7c0b41ce938cef97c6a`, while
+the immutable bytes downloaded from that registration's URL have SHA-256
+`ee85db4661b262a6133f71f0b8f228e663d213cefdaf73c43c293c082bb00d0b`.
+The replay pins and verifies the actual binary digest and prints both values.
+Because the receipt corpus spans 31 epochs and does not record scorer hashes,
+this is a strong public replay, not proof of the scorer used in every epoch and
+not a guarantee on unseen questions.
 
 ### Track 2 WASM scorer
 
@@ -215,6 +263,12 @@ byte-identical.
 - URLhaus provider contract and auth header
 - VirusTotal provider contract and auth header
 - submitted target URL is not fetched
+- original URL_SCAN question preserved independently of the canonical URL
+- 10 bounded historical incident records with source URLs
+- known campaign-only questions return scorer-readable facts without a live-scan claim
+- unknown campaign-only questions abstain at zero confidence
+- historical context cannot erase a live structural warning
+- legitimate publisher URLs are not classified as campaign infrastructure from path text
 
 ### Miner YAML and registration
 
@@ -415,6 +469,38 @@ recorded rather than interpreted: the portal independently returned
 
 The fresh wallet retained `1` testnet USDC. These registration transactions
 used Base Sepolia test ETH gas only; production x402 payment remains disabled.
+
+The request-contract registration `384` was later updated with the deployed
+historical-question and answer-first contract. The confirmed Base Sepolia
+transaction is
+[`0x4d2506...d4dd6e`](https://sepolia.basescan.org/tx/0x4d250637cbf55bc46d47b3c873ea9f1b86a7be376c54a60a626021d380d4dd6e).
+It emitted replacement registration `386`, whose on-chain record was read back
+as active with owner and fee address
+`0x2589cd4A7B7301A5973faf636b21166D0c21B67d`, intent `URL_SCAN`, and YAML hash:
+
+```text
+a7783891544380f745c860cf704d25b8ee9c8b935b9cb90cea62964a368be5a1
+```
+
+Telegraph's node subsequently exposed `386` with `activation_status: active`,
+`rejection_reason: null`, `fetch_attempts: 0`, and `retrying: false`. Only then
+was the existing Track 1 portal submission edited in place. Independent portal
+read-back returned:
+
+```text
+submission ID: 6a930a4aae9ddfbc70a760d9
+item ID: 386
+item verified: true
+submission status: verified
+saved: true
+X username: karanyadav38450
+updated: 2026-08-30T21:59:19.648Z
+```
+
+No duplicate registration transaction or portal submission was created.
+The node's per-ID endpoint still returns the retired on-chain registration
+`384` as active alongside `386`; ProofGate does not treat that stale node entry
+as a second on-chain registration.
 
 ## Screenshot Provenance
 

@@ -42,23 +42,35 @@ function stringsFromContainer(value: unknown): string[] {
   );
 }
 
-export function scanUrlFromBody(body: unknown): string {
-  const parsed = requestSchema.parse(body);
-  if (parsed.url) return parsed.url;
+export interface MinerScanRequest {
+  url?: string;
+  question?: string;
+}
 
-  const candidates = [
+export function scanRequestFromBody(body: unknown): MinerScanRequest {
+  const parsed = requestSchema.parse(body);
+  const proseCandidates = [
     parsed.question,
     parsed.query,
     parsed.input,
-    ...stringsFromContainer(parsed.payload),
-    ...stringsFromContainer(parsed.params),
-    ...stringsFromContainer(parsed.arguments),
-    ...stringsFromContainer(parsed.data),
-  ];
-  for (const candidate of candidates) {
+    ...[parsed.payload, parsed.params, parsed.arguments, parsed.data].flatMap(
+      stringsFromContainer,
+    ),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const question = proseCandidates[0];
+
+  if (parsed.url) return { url: parsed.url, question };
+
+  for (const candidate of proseCandidates) {
     if (!candidate) continue;
     const match = candidate.match(/https?:\/\/[^\s<>"'`]+/i);
-    if (match) return trimProsePunctuation(match[0]);
+    if (match) return { url: trimProsePunctuation(match[0]), question };
   }
+  return { question };
+}
+
+export function scanUrlFromBody(body: unknown): string {
+  const request = scanRequestFromBody(body);
+  if (request.url) return request.url;
   throw new TargetValidationError("Provide one complete http:// or https:// URL.");
 }

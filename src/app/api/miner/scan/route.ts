@@ -1,7 +1,10 @@
-import { rateLimitError } from "@/lib/proofgate/access";
-import { apiError, publicCorsHeaders } from "@/lib/proofgate/api";
-import { scanUrlWithEvidence } from "@/lib/proofgate/miner";
-import { scanUrlFromBody } from "@/lib/proofgate/miner-request";
+import { rateLimitError } from "../../../../lib/proofgate/access";
+import { apiError, publicCorsHeaders } from "../../../../lib/proofgate/api";
+import {
+  answerHistoricalUrlQuestion,
+  scanUrlWithEvidence,
+} from "../../../../lib/proofgate/miner";
+import { scanRequestFromBody } from "../../../../lib/proofgate/miner-request";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -38,8 +41,11 @@ export async function POST(request: Request) {
       return limitError;
     }
 
-    const url = scanUrlFromBody(await request.json());
-    return Response.json(await scanUrlWithEvidence(url), {
+    const scanRequest = scanRequestFromBody(await request.json());
+    const result = scanRequest.url
+      ? await scanUrlWithEvidence(scanRequest.url, { question: scanRequest.question })
+      : answerHistoricalUrlQuestion(scanRequest.question);
+    return Response.json(result, {
       headers: publicCorsHeaders,
     });
   } catch (error) {
