@@ -21,6 +21,8 @@
     "docs:capture": "node scripts/capture-readme-screenshots.mjs",
     "registration:check": "tsx scripts/register-miner.ts",
     "registration:submit": "tsx scripts/register-miner.ts --submit",
+    "miner:update:check": "tsx scripts/register-miner.ts --update",
+    "miner:update:submit": "tsx scripts/register-miner.ts --update --submit",
     "wasm:test": "cargo test --manifest-path wasm-scorer/Cargo.toml",
     "wasm:verify": "node scripts/package-wasm-scorer.mjs public/wasm/proofgate-url-scorer.wasm --verify-only",
     "wasm:build": "cargo build --release --target wasm32-unknown-unknown --manifest-path wasm-scorer/Cargo.toml && node scripts/package-wasm-scorer.mjs",

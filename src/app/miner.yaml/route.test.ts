@@ -34,6 +34,14 @@ describe("miner.yaml route", () => {
     expect(response.status).toBe(200);
     expect(config.base_url).toBe("https://proofgate.example");
     expect(config.endpoints[0].external_path).toBe("/api/miner/scan");
+    expect(config.endpoints[0].intents).toEqual(["URL_SCAN"]);
+    expect(config.endpoints[0].params.body.required).toEqual([
+      expect.objectContaining({
+        name: "url",
+        type: "string",
+        intents: ["URL_SCAN"],
+      }),
+    ]);
     const mappedFields = [
       ...config.on_chain.fields.strings,
       ...config.on_chain.fields.integers,

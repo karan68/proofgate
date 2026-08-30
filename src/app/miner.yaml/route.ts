@@ -60,6 +60,20 @@ export async function GET(request: NextRequest) {
           method: "POST",
           description:
             "Return a normalized safe, suspicious, or malicious verdict with confidence and source-level evidence.",
+          intents: ["URL_SCAN"],
+          params: {
+            body: {
+              required: [
+                {
+                  name: "url",
+                  type: "string",
+                  intents: ["URL_SCAN"],
+                  description:
+                    "Complete public http:// or https:// URL to evaluate, up to 2,048 characters.",
+                },
+              ],
+            },
+          },
         },
       ],
       input_schema: {
