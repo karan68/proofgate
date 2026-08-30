@@ -203,7 +203,7 @@ async function rdapEvidence(
           Accept: "application/rdap+json, application/json",
           "User-Agent": "ProofGate/0.1 (+https://proofgate-six.vercel.app)",
         },
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(4_000),
       },
     );
     if (response.status === 404) {
