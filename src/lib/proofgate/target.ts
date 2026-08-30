@@ -25,6 +25,7 @@ export interface ValidatedTarget {
 }
 
 export type AddressLookup = (hostname: string) => Promise<string[]>;
+const DNS_LOOKUP_TIMEOUT_MS = 5_000;
 
 export class TargetValidationError extends Error {
   constructor(message: string) {
@@ -103,6 +104,7 @@ export async function assertPublicTarget(
   options: {
     lookup?: AddressLookup;
     allowNonStandardPorts?: boolean;
+    allowUnresolved?: boolean;
   } = {},
 ): Promise<ValidatedTarget & { addresses: string[] }> {
   const target = normalizeTargetUrl(input);
@@ -112,11 +114,26 @@ export async function assertPublicTarget(
     throw new TargetValidationError("Execution is limited to standard HTTP and HTTPS ports.");
   }
 
-  const addresses = ipaddr.isValid(target.hostname)
-    ? [target.hostname]
-    : await (options.lookup ?? defaultAddressLookup)(target.hostname);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let addresses: string[];
+  try {
+    addresses = ipaddr.isValid(target.hostname)
+      ? [target.hostname]
+      : await Promise.race([
+          (options.lookup ?? defaultAddressLookup)(target.hostname),
+          new Promise<string[]>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new TargetValidationError("DNS lookup timed out.")),
+              DNS_LOOKUP_TIMEOUT_MS,
+            );
+          }),
+        ]).finally(() => clearTimeout(timeout));
+  } catch (error) {
+    if (!options.allowUnresolved) throw error;
+    addresses = [];
+  }
 
-  if (addresses.length === 0) {
+  if (addresses.length === 0 && !options.allowUnresolved) {
     throw new TargetValidationError("The target hostname did not resolve.");
   }
 

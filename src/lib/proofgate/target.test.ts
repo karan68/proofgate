@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   assertPublicTarget,
@@ -6,6 +6,10 @@ import {
   normalizeTargetUrl,
   TargetValidationError,
 } from "./target";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("target validation", () => {
   it("normalizes a public HTTPS URL and removes fragments", () => {
@@ -23,6 +27,8 @@ describe("target validation", () => {
     "http://localhost/admin",
     "http://127.0.0.1/",
     "http://169.254.169.254/latest/meta-data",
+    "http://2130706433/admin",
+    "http://0x7f000001/admin",
     "http://[::1]/",
     "https://user:pass@example.com/",
     "https://service.internal/",
@@ -62,5 +68,29 @@ describe("target validation", () => {
         lookup: async () => ["93.184.216.34"],
       }),
     ).rejects.toThrow("standard HTTP");
+  });
+
+  it("bounds a stalled DNS lookup", async () => {
+    vi.useFakeTimers();
+    const result = assertPublicTarget("https://example.com", {
+      lookup: () => new Promise<string[]>(() => {}),
+    });
+    const expectation = expect(result).rejects.toThrow("DNS lookup timed out");
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expectation;
+  });
+
+  it("allows unresolved metadata scans without weakening the strict default", async () => {
+    const lookup = async () => {
+      throw new Error("ENOTFOUND");
+    };
+
+    await expect(assertPublicTarget("https://missing.example", { lookup })).rejects.toThrow(
+      "ENOTFOUND",
+    );
+    await expect(
+      assertPublicTarget("https://missing.example", { lookup, allowUnresolved: true }),
+    ).resolves.toMatchObject({ addresses: [] });
   });
 });

@@ -115,6 +115,21 @@ const URL_SHORTENERS = new Set([
   "t.co",
   "tinyurl.com",
 ]);
+const LURE_WORDS = new Set([
+  "account",
+  "bonus",
+  "claim",
+  "free",
+  "gift",
+  "login",
+  "password",
+  "prize",
+  "secure",
+  "signin",
+  "update",
+  "verify",
+  "wallet",
+]);
 
 function truthy(value: boolean | string | undefined): boolean {
   if (typeof value === "boolean") return value;
@@ -130,6 +145,9 @@ async function parseJson(response: Response): Promise<unknown> {
 function structureEvidence(target: ValidatedTarget): SourceEvidence {
   const parsed = new URL(target.url);
   const risks: string[] = [];
+  const domainWords = (target.registrableDomain ?? target.hostname)
+    .split(/[.-]+/)
+    .filter(Boolean);
 
   if (target.protocol !== "https:") risks.push("unencrypted HTTP");
   if (target.hostname.includes("xn--")) risks.push("internationalized hostname");
@@ -137,8 +155,18 @@ function structureEvidence(target: ValidatedTarget): SourceEvidence {
   if (URL_SHORTENERS.has(target.registrableDomain ?? target.hostname)) {
     risks.push("URL shortener");
   }
-  if (/\.(?:apk|bat|cmd|com|exe|hta|jar|js|msi|ps1|scr|vbs)(?:$|[?#])/i.test(parsed.pathname)) {
+  let decodedPath = parsed.pathname;
+  try {
+    decodedPath = decodeURIComponent(parsed.pathname);
+  } catch {
+    risks.push("malformed URL encoding");
+  }
+  if (decodedPath.includes("\0")) risks.push("null byte encoding");
+  if (/\.(?:apk|bat|cmd|com|exe|hta|jar|js|msi|ps1|scr|vbs)$/i.test(decodedPath)) {
     risks.push("executable download path");
+  }
+  if (domainWords.filter((word) => LURE_WORDS.has(word)).length >= 2) {
+    risks.push("credential or reward lure hostname");
   }
 
   return risks.length > 0
@@ -530,14 +558,18 @@ export async function scanUrlWithEvidence(
   const target = await assertPublicTarget(input, {
     lookup: options.lookup,
     allowNonStandardPorts: false,
+    allowUnresolved: true,
   });
 
   const evidence: SourceEvidence[] = [
     structureEvidence(target),
     {
       source: "dns",
-      status: "clean",
-      detail: `Resolved only to public addresses: ${target.addresses.join(", ")}.`,
+      status: target.addresses.length > 0 ? "clean" : "unavailable",
+      detail:
+        target.addresses.length > 0
+          ? `Resolved only to public addresses: ${target.addresses.join(", ")}.`
+          : "The hostname did not resolve during this scan.",
     },
   ];
 

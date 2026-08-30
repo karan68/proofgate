@@ -71,6 +71,71 @@ describe("Miner evidence aggregation", () => {
 });
 
 describe("Miner provider contracts", () => {
+  it.each([
+    ["https://example.com/download%2Eexe", "executable download path"],
+    ["https://example.com/download.exe%00.txt", "null byte encoding"],
+    ["https://free-prize-claim.info/win", "credential or reward lure hostname"],
+    ["https://example.com/bad%encoding", "malformed URL encoding"],
+  ])("flags deterministic structural risk for %s", async (url, detail) => {
+    const result = await scanUrlWithEvidence(url, {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return Response.json({
+            events: [{ eventAction: "registration", eventDate: "2020-01-01T00:00:00Z" }],
+          });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => ["93.184.216.34"],
+      now: checkedAt,
+    });
+
+    expect(result).toMatchObject({ verdict: "suspicious", malicious: false });
+    expect(result.reason).toContain(detail);
+  });
+
+  it("classifies a dead lure domain instead of failing before structural analysis", async () => {
+    const result = await scanUrlWithEvidence("https://free-prize-claim.info/win", {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return new Response("", { status: 404 });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => {
+        throw new Error("ENOTFOUND");
+      },
+      now: checkedAt,
+    });
+
+    expect(result).toMatchObject({ verdict: "suspicious", malicious: false, confidence: 0.62 });
+    expect(result.evidence.find((item) => item.source === "dns")).toMatchObject({
+      status: "unavailable",
+    });
+  });
+
+  it.each([
+    "https://accounts.google.com/signin",
+    "https://secure-login.microsoft.com/account",
+  ])("does not flag an ordinary first-party login URL as structural risk: %s", async (url) => {
+    const result = await scanUrlWithEvidence(url, {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return Response.json({
+            events: [{ eventAction: "registration", eventDate: "1997-09-15T00:00:00Z" }],
+          });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => ["8.8.8.8"],
+      now: checkedAt,
+    });
+
+    expect(result.evidence.find((item) => item.source === "structure")).toMatchObject({
+      status: "clean",
+    });
+  });
+
   it("maps a verified PhishTank response to malicious without visiting the target", async () => {
     const requested: string[] = [];
     const fetcher = async (input: RequestInfo | URL) => {
