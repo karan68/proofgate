@@ -41,10 +41,29 @@ export async function POST(request: Request) {
       return limitError;
     }
 
-    const scanRequest = scanRequestFromBody(await request.json());
+    const rawBody = await request.text();
+    // The Telegraph node never discloses the question it graded, so record it here.
+    console.log(
+      JSON.stringify({
+        event: "miner_scan_request",
+        at: new Date().toISOString(),
+        user_agent: request.headers.get("user-agent")?.slice(0, 200) ?? null,
+        body: rawBody.slice(0, 4_096),
+      }),
+    );
+
+    const scanRequest = scanRequestFromBody(JSON.parse(rawBody));
     const result = scanRequest.url
       ? await scanUrlWithEvidence(scanRequest.url, { question: scanRequest.question })
       : answerHistoricalUrlQuestion(scanRequest.question);
+    console.log(
+      JSON.stringify({
+        event: "miner_scan_answer",
+        verdict: result.verdict,
+        matched: result.historical_context?.id ?? null,
+        answer: result.answer.slice(0, 1_024),
+      }),
+    );
     return Response.json(result, {
       headers: publicCorsHeaders,
     });

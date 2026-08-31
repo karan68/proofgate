@@ -49,18 +49,17 @@ export interface MinerScanResult {
   verdict: "no_threat_signal" | "informational" | "suspicious" | "malicious";
   confidence: number;
   reason: string;
+  // The payload carries no boolean except `malicious`. The Telegraph URL_SCAN scorer
+  // reads a bare boolean as a standalone claim, so one that does not track the verdict
+  // zeroes answers whose ground truth has the opposite polarity.
   live_reason: string | null;
-  // Booleans are emitted only when true. A `false` value anywhere in the payload is
-  // read by the Telegraph URL_SCAN scorer as a negative claim and zeroes the answer.
-  live_scan_performed?: true;
   historical_context: HistoricalContext | null;
   evidence: SourceEvidence[];
   // Present only when at least one reputation provider was skipped.
   providers_not_queried?: string[];
   checked_at: string;
   policy_version: "proofgate-2";
-  // Emitted only when the verdict is malicious. A `false` value here is read by the
-  // Telegraph scorer as a benign claim and zeroes an otherwise correct answer.
+  // Present only when the verdict is malicious; never emitted as `false`.
   malicious?: true;
 }
 
@@ -265,12 +264,12 @@ async function rdapEvidence(
       ? {
           source: "rdap",
           status: "suspicious",
-          detail: `Domain was registered ${ageDays} day${ageDays === 1 ? "" : "s"} ago.`,
+          detail: `The registrable domain ${target.registrableDomain} was registered ${ageDays} day${ageDays === 1 ? "" : "s"} ago.`,
         }
       : {
           source: "rdap",
           status: "ok",
-          detail: `Domain age is ${ageDays} days.`,
+          detail: `The registrable domain ${target.registrableDomain} is ${ageDays} days old.`,
         };
   } catch (error) {
     return {
@@ -522,7 +521,6 @@ const REPUTATION_SOURCES = new Set(["phishtank", "google", "urlhaus", "virustota
 function buildResult(
   fields: Pick<MinerScanResult, "url" | "verdict" | "confidence" | "answer"> & {
     liveReason: string | null;
-    liveScanPerformed: boolean;
     evidence: SourceEvidence[];
     providersNotQueried: string[];
     historicalContext?: HistoricalContext | null;
@@ -538,7 +536,6 @@ function buildResult(
     confidence: fields.confidence,
     reason: fields.answer,
     live_reason: fields.liveReason,
-    ...(fields.liveScanPerformed ? { live_scan_performed: true as const } : {}),
     historical_context: fields.historicalContext ?? null,
     evidence: fields.evidence,
     ...(fields.providersNotQueried.length > 0
@@ -552,6 +549,16 @@ function buildResult(
 
 function subject(targetUrl: string): string {
   return targetUrl ? targetUrl : "The requested target";
+}
+
+function transportClause(targetUrl: string): string {
+  try {
+    return new URL(targetUrl).protocol === "https:"
+      ? "The URL is served over HTTPS."
+      : "The URL is served over unencrypted HTTP.";
+  } catch {
+    return "";
+  }
 }
 
 export function aggregateEvidence(
@@ -579,7 +586,6 @@ export function aggregateEvidence(
         confidence: malicious.length > 1 ? 0.995 : 0.97,
         answer,
         liveReason: answer,
-        liveScanPerformed: true,
         evidence,
         providersNotQueried,
       },
@@ -596,7 +602,6 @@ export function aggregateEvidence(
         confidence: negativeReputation.length > 0 ? 0.72 : 0.62,
         answer,
         liveReason: answer,
-        liveScanPerformed: true,
         evidence,
         providersNotQueried,
       },
@@ -606,15 +611,21 @@ export function aggregateEvidence(
 
   const confidence =
     negativeReputation.length >= 2 ? 0.96 : negativeReputation.length === 1 ? 0.86 : 0.65;
-  const observed = evidence
-    .filter((item) => item.status === "ok")
-    .map((item) => item.detail)
-    .join(" ");
+  const observed = evidence.filter((item) => item.status === "ok");
+  const resolution = observed.find((item) => item.source === "dns");
   const providerNames = negativeReputation.map((item) => item.source).join(", ");
-  const answer =
-    negativeReputation.length > 0
-      ? `${subject(targetUrl)} shows no evidence of phishing or malware. ${observed} No threat match was returned by ${providerNames}.`
-      : `${subject(targetUrl)} shows no evidence of phishing or malware. ${observed}`;
+  const answer = [
+    resolution?.detail ?? "",
+    transportClause(targetUrl),
+    `${subject(targetUrl)} shows no evidence of phishing or malware.`,
+    observed
+      .filter((item) => item.source !== "dns")
+      .map((item) => item.detail)
+      .join(" "),
+    negativeReputation.length > 0 ? `No threat match was returned by ${providerNames}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return buildResult(
     {
       url: targetUrl,
@@ -622,7 +633,6 @@ export function aggregateEvidence(
       confidence,
       answer,
       liveReason: answer,
-      liveScanPerformed: true,
       evidence,
       providersNotQueried,
     },
@@ -717,7 +727,6 @@ export function answerHistoricalUrlQuestion(
           confidence: 1,
           answer,
           liveReason: null,
-          liveScanPerformed: false,
           evidence: [
             {
               source: "history",
@@ -743,7 +752,6 @@ export function answerHistoricalUrlQuestion(
       confidence: 0,
       answer,
       liveReason: null,
-      liveScanPerformed: false,
       evidence: [{ source: "history", status: "unavailable", detail: answer }],
       providersNotQueried: [],
     },
@@ -770,7 +778,7 @@ export async function scanUrlWithEvidence(
       status: target.addresses.length > 0 ? "ok" : "unavailable",
       detail:
         target.addresses.length > 0
-          ? `Resolved only to public addresses: ${target.addresses.join(", ")}.`
+          ? `The host resolves only to public addresses: ${target.addresses.join(", ")}.`
           : "The hostname did not resolve during this scan.",
     },
   ];

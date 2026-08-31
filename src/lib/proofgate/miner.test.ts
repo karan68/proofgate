@@ -30,7 +30,7 @@ describe("Miner evidence aggregation", () => {
       checkedAt,
     );
 
-    expect(result).toMatchObject({ verdict: "malicious", malicious: true, confidence: 0.97 });
+    expect(result).toMatchObject({ verdict: "malicious", confidence: 0.97 });
     expect(result.reason).toContain("SOCIAL_ENGINEERING");
   });
 
@@ -51,7 +51,6 @@ describe("Miner evidence aggregation", () => {
       checkedAt,
     );
     expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.72 });
-    expect(result.malicious).toBeUndefined();
   });
 
   it("requires a reputation source for an allow-grade confidence", () => {
@@ -70,7 +69,7 @@ describe("Miner evidence aggregation", () => {
     expect(oneReputation).toMatchObject({ verdict: "no_threat_signal", confidence: 0.86 });
   });
 
-  it("never emits a benign claim word or a false boolean that the Telegraph scorer reads as a contradiction", () => {
+  it("never emits a benign claim word or a bare boolean that the Telegraph scorer reads as a contradiction", () => {
     const results = [
       aggregateEvidence("https://example.com/", [evidence("dns", "ok")], checkedAt),
       aggregateEvidence(
@@ -86,7 +85,9 @@ describe("Miner evidence aggregation", () => {
     for (const result of results) {
       const body = JSON.stringify(result);
       expect(body).not.toMatch(/\b(safe|clean|benign|legitimate|harmless)\b/i);
-      expect(body).not.toContain(":false");
+      expect(body).not.toMatch(/:false\b/);
+      const booleans = body.match(/"(\w+)":true\b/g) ?? [];
+      expect(booleans).toEqual(result.verdict === "malicious" ? ['"malicious":true'] : []);
     }
   });
 
@@ -135,7 +136,6 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result).toMatchObject({ verdict: "suspicious" });
-    expect(result.malicious).toBeUndefined();
     expect(result.reason).toContain(detail);
   });
 
@@ -154,7 +154,6 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.62 });
-    expect(result.malicious).toBeUndefined();
     expect(result.evidence.find((item) => item.source === "dns")).toMatchObject({
       status: "unavailable",
     });
@@ -218,7 +217,7 @@ describe("Miner provider contracts", () => {
       phishTankAppKey: "phish-key",
     });
 
-    expect(result).toMatchObject({ verdict: "malicious", malicious: true });
+    expect(result).toMatchObject({ verdict: "malicious" });
     expect(requested).not.toContain("https://example.com/");
   });
 
@@ -268,7 +267,6 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result).toMatchObject({ verdict: "no_threat_signal", confidence: 0.96 });
-    expect(result.malicious).toBeUndefined();
     expect(
       requests.find((request) => request.url.startsWith("https://rdap.org/"))?.init?.headers,
     ).toMatchObject({
@@ -296,11 +294,9 @@ describe("Miner historical answers", () => {
 
     expect(result).toMatchObject({
       verdict: "malicious",
-      malicious: true,
       live_reason: null,
       historical_context: { id: "necurs", matched_by: "question" },
     });
-    expect(result.live_scan_performed).toBeUndefined();
     expect(result.answer).toContain("more than nine million computers");
     expect(result.answer).toContain("more than six million unique domains");
   });
@@ -315,8 +311,6 @@ describe("Miner historical answers", () => {
       confidence: 0,
       historical_context: null,
     });
-    expect(result.live_scan_performed).toBeUndefined();
-    expect(result.malicious).toBeUndefined();
     expect(result.answer).toContain("No URL or campaign verdict is claimed");
   });
 
@@ -337,10 +331,8 @@ describe("Miner historical answers", () => {
 
     expect(result).toMatchObject({
       verdict: "no_threat_signal",
-      live_scan_performed: true,
       historical_context: { id: "mirai", matched_by: "question" },
     });
-    expect(result.malicious).toBeUndefined();
     expect(result.answer).toContain("Anna-senpai");
     expect(result.answer).not.toMatch(/\bsafe\b/i);
   });
