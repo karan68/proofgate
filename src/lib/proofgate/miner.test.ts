@@ -154,9 +154,7 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.62 });
-    expect(result.evidence.find((item) => item.source === "dns")).toMatchObject({
-      status: "unavailable",
-    });
+    expect(result.not_observed).toContain("dns");
   });
 
   it.each([

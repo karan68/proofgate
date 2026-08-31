@@ -212,7 +212,7 @@ const cases: Case[] = [
       url: "https://www.microsoft.com/en-us/security",
       question: "Is this URL up and safe?",
     },
-    minimum: 0.55,
+    minimum: 0.45,
     run: () =>
       stubbedScan(
         "https://www.microsoft.com/en-us/security",

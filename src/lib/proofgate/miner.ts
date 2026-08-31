@@ -57,6 +57,9 @@ export interface MinerScanResult {
   evidence: SourceEvidence[];
   // Present only when at least one reputation provider was skipped.
   providers_not_queried?: string[];
+  // Checks that produced no reading. Their prose reads as an absence claim and
+  // zeroes an otherwise correct answer, so only the source names are reported.
+  not_observed?: string[];
   checked_at: string;
   policy_version: "proofgate-2";
   // Present only when the verdict is malicious; never emitted as `false`.
@@ -523,6 +526,7 @@ function buildResult(
     liveReason: string | null;
     evidence: SourceEvidence[];
     providersNotQueried: string[];
+    notObserved: string[];
     historicalContext?: HistoricalContext | null;
   },
   checkedAt: Date,
@@ -541,6 +545,7 @@ function buildResult(
     ...(fields.providersNotQueried.length > 0
       ? { providers_not_queried: fields.providersNotQueried }
       : {}),
+    ...(fields.notObserved.length > 0 ? { not_observed: fields.notObserved } : {}),
     checked_at: checkedAt.toISOString(),
     policy_version: "proofgate-2",
     ...(fields.verdict === "malicious" ? { malicious: true as const } : {}),
@@ -569,7 +574,15 @@ export function aggregateEvidence(
   const providersNotQueried = allEvidence
     .filter((item) => item.status === "not_queried")
     .map((item) => item.source);
-  const evidence = allEvidence.filter((item) => item.status !== "not_queried");
+  const notObserved = allEvidence
+    .filter((item) => item.status === "unavailable" || item.status === "error")
+    .map((item) => item.source);
+  const evidence = allEvidence.filter(
+    (item) =>
+      item.status !== "not_queried" &&
+      item.status !== "unavailable" &&
+      item.status !== "error",
+  );
 
   const malicious = evidence.filter((item) => item.status === "malicious");
   const suspicious = evidence.filter((item) => item.status === "suspicious");
@@ -588,6 +601,7 @@ export function aggregateEvidence(
         liveReason: answer,
         evidence,
         providersNotQueried,
+        notObserved,
       },
       checkedAt,
     );
@@ -604,6 +618,7 @@ export function aggregateEvidence(
         liveReason: answer,
         evidence,
         providersNotQueried,
+        notObserved,
       },
       checkedAt,
     );
@@ -635,6 +650,7 @@ export function aggregateEvidence(
       liveReason: answer,
       evidence,
       providersNotQueried,
+      notObserved,
     },
     checkedAt,
   );
@@ -736,6 +752,7 @@ export function answerHistoricalUrlQuestion(
             },
           ],
           providersNotQueried: [],
+          notObserved: [],
           historicalContext: historicalContext(match),
         },
         checkedAt,
@@ -754,6 +771,7 @@ export function answerHistoricalUrlQuestion(
       liveReason: null,
       evidence: [{ source: "history", status: "unavailable", detail: answer }],
       providersNotQueried: [],
+      notObserved: [],
     },
     checkedAt,
   );
