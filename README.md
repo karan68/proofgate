@@ -72,7 +72,7 @@ flowchart LR
 | Telegraph client | Live intent discovery, contract-based Miner selection, capped x402 payment, settlement decoding |
 | Local policy | Deterministic `ALLOW`, `WARN`, `BLOCK`; unknown or under-confident answers fail closed |
 | Guarded executor | Public HTTP(S) only, DNS pinning, TLS SNI preservation, standard ports, manual redirects, bounded bodies |
-| ProofGate Miner | Seven live evidence sources plus a bounded, sourced 10-incident history catalog; no submitted-target fetch |
+| ProofGate Miner | Eight live evidence sources plus a bounded, sourced 10-incident history catalog; the only target contact is one pinned, redirect-free `HEAD` |
 | Audit ledger | Canonical SHA-256 chain, JSONL locally, atomic Redis compare-and-append in serverless production |
 | MCP server | Four MCP v2 stdio tools for status, scan, guarded fetch, and audit tail |
 | Web console | Live Miner pool, payment readiness, operator auth, evidence, receipts, execution result, audit history |
@@ -275,18 +275,31 @@ The production deployment currently has no signer by design.
 ## ProofGate URL Intelligence Miner
 
 ProofGate also exposes its own deterministic `URL_SCAN` Miner at
-`POST /api/miner/scan`. It does **not** fetch the submitted target URL. It gathers
-metadata and reputation evidence instead.
+`POST /api/miner/scan`. It gathers metadata, reputation and bounded historical
+evidence, and adds one bounded `HEAD` reachability probe. It never renders,
+executes, or downloads the target.
 
 | Source | Always available | Signal |
 | --- | --- | --- |
 | URL structure | Yes | HTTP, punycode, literal IP, shortener, executable path |
 | DNS | Yes | Resolution and public-address validation |
+| Reachability | Yes, network permitting | HTTP status, scheme and declared redirect from one `HEAD` request |
 | RDAP | Yes, network permitting | Domain registration age; under 30 days is suspicious |
 | PhishTank | With key | Verified phishing database match |
 | Google Safe Browsing | With key | Malware/social-engineering threat match |
 | URLhaus | With key | Exact malware distribution URL match |
 | VirusTotal | With key | Multi-engine malicious/suspicious/harmless counts |
+
+The reachability probe is deliberately narrow. It runs only after
+`assertPublicTarget` has resolved the hostname and rejected every private,
+loopback and reserved address; it is pinned to that validated address through the
+same `undici` connector the guarded execution path uses, so a second DNS answer
+cannot redirect it inward; it sends `HEAD` only, does not follow redirects, reads
+no response body, and times out after 5 seconds. A probe that fails is recorded
+as a name in `not_observed` and never becomes a verdict.
+
+The benign verdict is `no_threat_signal`, not `safe`. ProofGate reports that it
+found no threat evidence; it does not certify that a URL is safe.
 
 Aggregation is deterministic:
 

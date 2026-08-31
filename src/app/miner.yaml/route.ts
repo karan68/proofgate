@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       protocol: "generic",
       name: "ProofGate URL Intelligence",
       description:
-        "Deterministic pre-execution URL intelligence for autonomous agents. Aggregates phishing, malware, DNS, domain-age, URL-structure, and bounded sourced historical-incident evidence without visiting the submitted target.",
+        "Deterministic pre-execution URL intelligence for autonomous agents. Aggregates phishing, malware, DNS, domain-age, URL-structure, and bounded sourced historical-incident evidence, plus one bounded HEAD reachability probe sent to the already-validated public address, pinned to that address, with redirects unfollowed and no response body read.",
       base_url: baseUrl,
       rate_limit_per_sec: 5,
       cache_ttl_sec: 60,
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
           external_path: "/api/miner/scan",
           method: "POST",
           description:
-            "Return a normalized live URL verdict and a scorer-readable answer, with sourced historical context when the request names a documented incident.",
+            "Return a normalized live URL verdict and a scorer-readable answer, including the HTTP status, scheme and declared redirect from one bounded HEAD probe, with sourced historical context when the request names a documented incident.",
           intents: ["URL_SCAN"],
           params: {
             body: {
@@ -102,12 +102,10 @@ export async function GET(request: NextRequest) {
           "intent",
           "url",
           "verdict",
-          "malicious",
           "confidence",
           "answer",
           "reason",
           "live_reason",
-          "live_scan_performed",
           "historical_context",
           "evidence",
           "checked_at",
@@ -117,15 +115,38 @@ export async function GET(request: NextRequest) {
           schema_version: { type: "string" },
           intent: { type: "string", enum: ["URL_SCAN"] },
           url: { type: "string" },
-          verdict: { type: "string", enum: ["safe", "suspicious", "malicious"] },
-          malicious: { type: "boolean" },
+          verdict: {
+            type: "string",
+            enum: ["no_threat_signal", "informational", "suspicious", "malicious"],
+            description:
+              "no_threat_signal means no threat evidence was found; it is not a certification that the URL is safe.",
+          },
+          malicious: {
+            type: "boolean",
+            enum: [true],
+            description: "Present only when the verdict is malicious; never emitted as false.",
+          },
           confidence: { type: "number", minimum: 0, maximum: 1 },
           answer: { type: "string" },
           reason: { type: "string" },
           live_reason: { type: ["string", "null"] },
-          live_scan_performed: { type: "boolean" },
           historical_context: { type: ["object", "null"] },
-          evidence: { type: "array", items: { type: "object" } },
+          evidence: {
+            type: "array",
+            items: { type: "object" },
+            description:
+              "Findings that produced a reading, from structure, dns, rdap, reachability, history and any reputation provider that answered.",
+          },
+          providers_not_queried: {
+            type: "array",
+            items: { type: "string" },
+            description: "Reputation providers skipped because no credential is configured.",
+          },
+          not_observed: {
+            type: "array",
+            items: { type: "string" },
+            description: "Checks that ran but produced no reading.",
+          },
           checked_at: { type: "string", format: "date-time" },
           policy_version: { type: "string" },
         },
@@ -146,7 +167,8 @@ export async function GET(request: NextRequest) {
             {
               index: 0,
               name: "verdict",
-              description: "Normalized safe, suspicious, or malicious verdict.",
+              description:
+                "Normalized no_threat_signal, informational, suspicious, or malicious verdict.",
               source_path: "verdict",
             },
             {
@@ -202,6 +224,16 @@ export async function GET(request: NextRequest) {
           property: "length",
           value_num: 4096,
           operator: "lte",
+        },
+        {
+          code: "NO_CERTIFICATION",
+          message:
+            "A no_threat_signal verdict reports the absence of threat evidence. ProofGate does not certify that a URL is safe.",
+        },
+        {
+          code: "BOUNDED_PROBE",
+          message:
+            "The reachability probe sends one HEAD request to the validated public address, pinned to that address, with redirects unfollowed, no response body read, and a 5 second timeout. ProofGate never renders or executes the target.",
         },
       ],
     };

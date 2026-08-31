@@ -37,10 +37,19 @@ must submit that new destination as a separate guarded action.
 
 ## Miner behavior
 
-ProofGate's own Miner does not fetch the submitted target. It derives evidence
-from URL structure, DNS, RDAP, and configured reputation APIs. Missing,
-rate-limited, or failed providers are recorded as unavailable and do not count
-as clean evidence.
+ProofGate's own Miner derives evidence from URL structure, DNS, RDAP, configured
+reputation APIs, and one bounded reachability probe. Missing, rate-limited, or
+failed providers are recorded and do not count as evidence of absence.
+
+The reachability probe is the only contact the Miner makes with the submitted
+target. It runs after the same public-address validation as the guarded
+execution path, is pinned to the validated address so a second DNS answer cannot
+redirect it inward, sends `HEAD` only, does not follow redirects, reads no
+response body, and times out after 5 seconds. Nothing from the target is
+rendered, executed, or stored beyond the status line and two response headers.
+
+The benign verdict is `no_threat_signal`. ProofGate reports the absence of
+threat evidence; it does not certify that a URL is safe.
 
 Provider results are untrusted inputs. They are parsed into bounded normalized
 records before aggregation.

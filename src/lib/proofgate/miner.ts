@@ -1,7 +1,10 @@
 import { Buffer } from "node:buffer";
+import { isIP } from "node:net";
 
+import { fetch as undiciFetch } from "undici";
 import { z } from "zod";
 
+import { pinnedAgent } from "./execute";
 import {
   findHistoricalUrlIncident,
   type HistoricalUrlMatch,
@@ -23,7 +26,16 @@ export type EvidenceStatus =
   | "error";
 
 export interface SourceEvidence {
-  source: "structure" | "dns" | "rdap" | "phishtank" | "google" | "urlhaus" | "virustotal" | "history";
+  source:
+    | "structure"
+    | "dns"
+    | "rdap"
+    | "reachability"
+    | "phishtank"
+    | "google"
+    | "urlhaus"
+    | "virustotal"
+    | "history";
   status: EvidenceStatus;
   detail: string;
   reference?: string;
@@ -75,6 +87,9 @@ export interface MinerScanOptions {
   urlHausAuthKey?: string;
   virusTotalApiKey?: string;
   question?: string;
+  reachabilityProbe?: (
+    target: ValidatedTarget & { addresses: string[] },
+  ) => Promise<SourceEvidence>;
 }
 
 const phishTankSchema = z.object({
@@ -212,6 +227,58 @@ function structureEvidence(target: ValidatedTarget): SourceEvidence {
         status: "ok",
         detail: "No high-risk URL structure indicator was observed.",
       };
+}
+
+const REACHABILITY_TIMEOUT_MS = 5_000;
+
+/**
+ * One HEAD request to the already-validated public address, pinned to that address so
+ * a second DNS answer cannot redirect it inward, with redirects left unfollowed and no
+ * response body read.
+ */
+async function reachabilityEvidence(
+  target: ValidatedTarget & { addresses: string[] },
+): Promise<SourceEvidence> {
+  if (target.addresses.length === 0) {
+    return {
+      source: "reachability",
+      status: "not_queried",
+      detail: "The hostname produced no address to probe.",
+    };
+  }
+
+  const address =
+    target.addresses.find((candidate) => isIP(candidate) === 4) ?? target.addresses[0];
+  const agent = pinnedAgent(address, target.hostname);
+  try {
+    const response = await undiciFetch(target.url, {
+      method: "HEAD",
+      headers: {
+        Accept: "*/*",
+        "User-Agent": "ProofGate/1.0 (Telegraph URL_SCAN Miner; HEAD only)",
+      },
+      redirect: "manual",
+      signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
+      dispatcher: agent,
+    });
+    const scheme = target.protocol === "https:" ? "HTTPS" : "unencrypted HTTP";
+    const location = response.headers.get("location");
+    const server = response.headers.get("server");
+    const detail = [
+      `The URL answers with HTTP status ${response.status} over ${scheme}`,
+      location ? ` and declares a redirect to ${location}` : " with no redirect declared",
+      server ? `, served by ${server}.` : ".",
+    ].join("");
+    return { source: "reachability", status: "ok", detail };
+  } catch (error) {
+    return {
+      source: "reachability",
+      status: "unavailable",
+      detail: `The host did not answer a HEAD request: ${(error as Error).message}`,
+    };
+  } finally {
+    await agent.close();
+  }
 }
 
 async function rdapEvidence(
@@ -572,10 +639,15 @@ export function aggregateEvidence(
   checkedAt = new Date(),
 ): MinerScanResult {
   const providersNotQueried = allEvidence
-    .filter((item) => item.status === "not_queried")
+    .filter((item) => item.status === "not_queried" && REPUTATION_SOURCES.has(item.source))
     .map((item) => item.source);
   const notObserved = allEvidence
-    .filter((item) => item.status === "unavailable" || item.status === "error")
+    .filter(
+      (item) =>
+        item.status === "unavailable" ||
+        item.status === "error" ||
+        (item.status === "not_queried" && !REPUTATION_SOURCES.has(item.source)),
+    )
     .map((item) => item.source);
   const evidence = allEvidence.filter(
     (item) =>
@@ -627,14 +699,16 @@ export function aggregateEvidence(
   const confidence =
     negativeReputation.length >= 2 ? 0.96 : negativeReputation.length === 1 ? 0.86 : 0.65;
   const observed = evidence.filter((item) => item.status === "ok");
+  const reachability = observed.find((item) => item.source === "reachability");
   const resolution = observed.find((item) => item.source === "dns");
   const providerNames = negativeReputation.map((item) => item.source).join(", ");
   const answer = [
+    reachability?.detail ?? "",
     resolution?.detail ?? "",
-    transportClause(targetUrl),
+    reachability ? "" : transportClause(targetUrl),
     `${subject(targetUrl)} shows no evidence of phishing or malware.`,
     observed
-      .filter((item) => item.source !== "dns")
+      .filter((item) => item.source !== "dns" && item.source !== "reachability")
       .map((item) => item.detail)
       .join(" "),
     negativeReputation.length > 0 ? `No threat match was returned by ${providerNames}.` : "",
@@ -802,6 +876,7 @@ export async function scanUrlWithEvidence(
   ];
 
   const remoteEvidence = await Promise.all([
+    (options.reachabilityProbe ?? reachabilityEvidence)(target),
     rdapEvidence(target, fetcher, now),
     phishTankEvidence(
       target,

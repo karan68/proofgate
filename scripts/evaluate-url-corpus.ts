@@ -62,6 +62,11 @@ const offlineScan = (url: string, question: string) =>
     question,
     now: new Date("2026-08-31T00:00:00.000Z"),
     lookup: async () => ["93.184.216.34"],
+    reachabilityProbe: async () => ({
+      source: "reachability",
+      status: "not_queried",
+      detail: "The reachability probe was disabled for this run.",
+    }),
     fetcher: (async (input: RequestInfo | URL) => {
       if (String(input).startsWith("https://rdap.org/")) {
         return Response.json({

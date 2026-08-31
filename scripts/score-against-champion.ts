@@ -46,11 +46,18 @@ async function championScorer() {
     exports.rank_answer(...write(question), ...write(groundTruth), ...write(minerAnswer));
 }
 
+// Local mode stays offline and deterministic, so it reports the floor ProofGate
+// reaches without a live reading. Run with --production to score the real probe.
 const stubbedScan = (url: string, question: string, registeredAt: string, address: string) =>
   scanUrlWithEvidence(url, {
     question,
     now: new Date("2026-08-31T00:00:00.000Z"),
     lookup: async () => [address],
+    reachabilityProbe: async () => ({
+      source: "reachability",
+      status: "not_queried",
+      detail: "The reachability probe was disabled for this run.",
+    }),
     fetcher: (async (input: RequestInfo | URL) => {
       if (String(input).startsWith("https://rdap.org/")) {
         return Response.json({

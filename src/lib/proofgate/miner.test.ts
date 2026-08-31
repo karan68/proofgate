@@ -9,6 +9,13 @@ import {
 
 const checkedAt = new Date("2026-08-18T00:00:00.000Z");
 
+// Keeps the live HEAD probe out of unit tests; its own behaviour is covered separately.
+const offlineProbe = async (): Promise<SourceEvidence> => ({
+  source: "reachability",
+  status: "not_queried",
+  detail: "The reachability probe was disabled for this scan.",
+});
+
 function evidence(
   source: SourceEvidence["source"],
   status: SourceEvidence["status"],
@@ -69,6 +76,39 @@ describe("Miner evidence aggregation", () => {
     expect(oneReputation).toMatchObject({ verdict: "no_threat_signal", confidence: 0.86 });
   });
 
+  it("leads the answer with the live reading when the reachability probe returns one", () => {
+    const result = aggregateEvidence(
+      "https://example.com/",
+      [
+        evidence(
+          "reachability",
+          "ok",
+          "The URL answers with HTTP status 200 over HTTPS with no redirect declared.",
+        ),
+        evidence("dns", "ok", "The host resolves only to public addresses: 93.184.216.34."),
+        evidence("rdap", "ok", "The registrable domain example.com is 11340 days old."),
+      ],
+      checkedAt,
+    );
+
+    expect(result.answer.startsWith("The URL answers with HTTP status 200")).toBe(true);
+    expect(result.answer).toContain("shows no evidence of phishing or malware");
+  });
+
+  it("records a failed reachability probe as a name without adding absence prose", () => {
+    const result = aggregateEvidence(
+      "https://example.com/",
+      [
+        evidence("reachability", "unavailable", "The host did not answer a HEAD request: timeout"),
+        evidence("dns", "ok", "The host resolves only to public addresses: 93.184.216.34."),
+      ],
+      checkedAt,
+    );
+
+    expect(result.not_observed).toEqual(["reachability"]);
+    expect(JSON.stringify(result)).not.toContain("did not answer");
+  });
+
   it("never emits a benign claim word or a bare boolean that the Telegraph scorer reads as a contradiction", () => {
     const results = [
       aggregateEvidence("https://example.com/", [evidence("dns", "ok")], checkedAt),
@@ -103,6 +143,7 @@ describe("Miner evidence aggregation", () => {
       },
       lookup: async () => ["93.184.216.34"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
     });
 
     expect(result.providers_not_queried).toEqual([
@@ -111,6 +152,7 @@ describe("Miner evidence aggregation", () => {
       "urlhaus",
       "virustotal",
     ]);
+    expect(result.not_observed).toEqual(["reachability"]);
     expect(result.evidence.some((item) => item.status === "not_queried")).toBe(false);
   });
 });
@@ -133,6 +175,7 @@ describe("Miner provider contracts", () => {
       },
       lookup: async () => ["93.184.216.34"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
     });
 
     expect(result).toMatchObject({ verdict: "suspicious" });
@@ -151,6 +194,7 @@ describe("Miner provider contracts", () => {
         throw new Error("ENOTFOUND");
       },
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
     });
 
     expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.62 });
@@ -172,6 +216,7 @@ describe("Miner provider contracts", () => {
       },
       lookup: async () => ["8.8.8.8"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
     });
 
     expect(result.evidence.find((item) => item.source === "structure")).toMatchObject({
@@ -212,6 +257,7 @@ describe("Miner provider contracts", () => {
       fetcher: fetcher as typeof fetch,
       lookup: async () => ["93.184.216.34"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
       phishTankAppKey: "phish-key",
     });
 
@@ -259,6 +305,7 @@ describe("Miner provider contracts", () => {
       fetcher: fetcher as typeof fetch,
       lookup: async () => ["93.184.216.34"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
       googleSafeBrowsingKey: "google-key",
       urlHausAuthKey: "urlhaus-key",
       virusTotalApiKey: "vt-key",
@@ -324,6 +371,7 @@ describe("Miner historical answers", () => {
       },
       lookup: async () => ["140.82.112.4"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
       question: "What domains were documented after the Mirai source code release?",
     });
 
@@ -347,6 +395,7 @@ describe("Miner historical answers", () => {
       },
       lookup: async () => ["93.184.216.34"],
       now: checkedAt,
+      reachabilityProbe: offlineProbe,
       question: "What is documented about Emotet infrastructure?",
     });
 

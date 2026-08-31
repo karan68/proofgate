@@ -93,7 +93,7 @@ function textPreview(bytes: Uint8Array, contentType: string | null): string | nu
     .trim();
 }
 
-function pinnedAgent(address: string, servername: string): Agent {
+export function pinnedAgent(address: string, servername: string): Agent {
   const connector = buildConnector({ timeout: 10_000 });
   return new Agent({
     connect(options, callback) {

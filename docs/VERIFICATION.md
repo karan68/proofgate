@@ -262,7 +262,8 @@ byte-identical.
 - Google Safe Browsing provider contract
 - URLhaus provider contract and auth header
 - VirusTotal provider contract and auth header
-- submitted target URL is not fetched
+- the only target contact is one pinned, redirect-free `HEAD` probe that reads no body
+- a failed reachability probe is recorded as a name and never becomes a verdict
 - original URL_SCAN question preserved independently of the canonical URL
 - 10 bounded historical incident records with source URLs
 - known campaign-only questions return scorer-readable facts without a live-scan claim
