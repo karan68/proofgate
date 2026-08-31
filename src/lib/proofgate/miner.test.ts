@@ -70,7 +70,7 @@ describe("Miner evidence aggregation", () => {
     expect(oneReputation).toMatchObject({ verdict: "no_threat_signal", confidence: 0.86 });
   });
 
-  it("never emits a benign claim word that the Telegraph scorer reads as a contradiction", () => {
+  it("never emits a benign claim word or a false boolean that the Telegraph scorer reads as a contradiction", () => {
     const results = [
       aggregateEvidence("https://example.com/", [evidence("dns", "ok")], checkedAt),
       aggregateEvidence(
@@ -80,10 +80,13 @@ describe("Miner evidence aggregation", () => {
       ),
       aggregateEvidence("https://example.com/", [evidence("google", "malicious")], checkedAt),
       answerHistoricalUrlQuestion("What is documented about Necurs?", checkedAt),
+      answerHistoricalUrlQuestion("What domains did the Example Nebula campaign use?", checkedAt),
     ];
 
     for (const result of results) {
-      expect(JSON.stringify(result)).not.toMatch(/\b(safe|clean|benign|legitimate|harmless)\b/i);
+      const body = JSON.stringify(result);
+      expect(body).not.toMatch(/\b(safe|clean|benign|legitimate|harmless)\b/i);
+      expect(body).not.toContain(":false");
     }
   });
 
@@ -294,10 +297,10 @@ describe("Miner historical answers", () => {
     expect(result).toMatchObject({
       verdict: "malicious",
       malicious: true,
-      live_scan_performed: false,
       live_reason: null,
       historical_context: { id: "necurs", matched_by: "question" },
     });
+    expect(result.live_scan_performed).toBeUndefined();
     expect(result.answer).toContain("more than nine million computers");
     expect(result.answer).toContain("more than six million unique domains");
   });
@@ -310,9 +313,9 @@ describe("Miner historical answers", () => {
 
     expect(result).toMatchObject({
       confidence: 0,
-      live_scan_performed: false,
       historical_context: null,
     });
+    expect(result.live_scan_performed).toBeUndefined();
     expect(result.malicious).toBeUndefined();
     expect(result.answer).toContain("No URL or campaign verdict is claimed");
   });

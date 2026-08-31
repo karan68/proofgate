@@ -30,9 +30,9 @@ describe("URL_SCAN route", () => {
     expect(body).toMatchObject({
       intent: "URL_SCAN",
       verdict: "malicious",
-      live_scan_performed: false,
       historical_context: { id: "necurs", matched_by: "question" },
     });
+    expect(body.live_scan_performed).toBeUndefined();
     expect(body.answer).toContain("more than nine million computers");
   });
 
@@ -45,9 +45,9 @@ describe("URL_SCAN route", () => {
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
       confidence: 0,
-      live_scan_performed: false,
       historical_context: null,
     });
+    expect(body.live_scan_performed).toBeUndefined();
     expect(body.malicious).toBeUndefined();
     expect(body.answer).toContain("No URL or campaign verdict is claimed");
   });

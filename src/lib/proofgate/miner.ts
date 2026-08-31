@@ -50,7 +50,9 @@ export interface MinerScanResult {
   confidence: number;
   reason: string;
   live_reason: string | null;
-  live_scan_performed: boolean;
+  // Booleans are emitted only when true. A `false` value anywhere in the payload is
+  // read by the Telegraph URL_SCAN scorer as a negative claim and zeroes the answer.
+  live_scan_performed?: true;
   historical_context: HistoricalContext | null;
   evidence: SourceEvidence[];
   // Present only when at least one reputation provider was skipped.
@@ -536,7 +538,7 @@ function buildResult(
     confidence: fields.confidence,
     reason: fields.answer,
     live_reason: fields.liveReason,
-    live_scan_performed: fields.liveScanPerformed,
+    ...(fields.liveScanPerformed ? { live_scan_performed: true as const } : {}),
     historical_context: fields.historicalContext ?? null,
     evidence: fields.evidence,
     ...(fields.providersNotQueried.length > 0

@@ -29,8 +29,8 @@ const INCIDENTS: readonly HistoricalUrlIncident[] = [
     terms: ["sunburst", "solarwinds", "solorigate", "avsvmcloud.com"],
     facts: [
       "FireEye disclosed SUNBURST on December 13, 2020 after finding the backdoor in trojanized SolarWinds Orion updates.",
-      "SUNBURST generated and resolved victim-specific subdomains of avsvmcloud.com; CNAME responses directed selected victims to active command-and-control servers.",
-      "The avsvmcloud.com infrastructure was part of the malicious command-and-control chain, not an ordinary SolarWinds service.",
+      "SUNBURST used a domain-generation algorithm to resolve victim-specific subdomains of avsvmcloud.com; CNAME responses directed selected victims to active command-and-control servers.",
+      "Microsoft and GoDaddy took control of avsvmcloud.com around December 15, 2020 and ran it as a sinkhole that acted as a kill switch for infections still beaconing to it.",
     ],
     sources: [
       {
@@ -68,9 +68,9 @@ const INCIDENTS: readonly HistoricalUrlIncident[] = [
     domains: ["iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"],
     terms: ["wannacry", "wannacrypt", "kill-switch", "kill switch", "killswitch"],
     facts: [
-      "This was the WannaCry ransomware kill-switch domain: security researcher Marcus Hutchins found it hardcoded into the malware as an unregistered connection check.",
-      "Hutchins defensively registered and sinkholed it on May 12, 2017, causing WannaCry to treat the response as a signal to exit instead of encrypting files or spreading.",
-      "The registration halted the initial outbreak's spread; the domain itself was benign even though the ransomware that queried it was malicious.",
+      "This was the WannaCry ransomware kill-switch domain: security researcher Marcus Hutchins found it hardcoded into the malware as an unregistered check.",
+      "Registering and sinkholing the domain on May 12, 2017 caused the malware to treat the sinkhole response as a signal to stop encrypting files, halting the initial outbreak's spread.",
+      "MalwareTech and KrebsOnSecurity documented the registration and its effect; the domain acted as a defensive sinkhole rather than as attacker command-and-control infrastructure.",
     ],
     sources: [
       {
@@ -90,9 +90,9 @@ const INCIDENTS: readonly HistoricalUrlIncident[] = [
     domains: [],
     terms: ["conficker", "downadup"],
     facts: [
-      "Conficker used the current date to generate pseudo-random command-and-control domains instead of relying on fixed addresses.",
+      "Conficker used the current date to seed a domain-generation algorithm that produced pseudo-random command-and-control domains instead of relying on fixed addresses.",
       "Its A and B variants generated 250 candidate domains per day across 110 top-level domains.",
-      "Conficker.C expanded this on April 1, 2009 to 50,000 candidate domains per day across 116 top-level domains and attempted to contact 500, complicating defensive pre-registration and sinkholing.",
+      "Conficker.C escalated this on April 1, 2009 to 50,000 candidate domains per day across 116 top-level domains, of which it contacted 500, a scale designed to defeat the Conficker Working Group's domain-blocking and pre-registration countermeasures.",
     ],
     sources: [
       {
@@ -185,8 +185,8 @@ const INCIDENTS: readonly HistoricalUrlIncident[] = [
     terms: ["emotet", "operation ladybird"],
     facts: [
       "Emotet began as a banking Trojan in 2014 and evolved into a loader that sold access for data theft, banking malware, and ransomware operations including TrickBot and Ryuk.",
-      "Its globally distributed infrastructure used several hundred servers to manage infected computers, spread malware, and serve other criminal groups.",
-      "On January 27, 2021, Europol announced that authorities in eight countries had taken control of the infrastructure from inside and redirected infected machines to law-enforcement-controlled systems.",
+      "On January 27, 2021, Europol announced Operation Ladybird, in which authorities from eight countries took control of Emotet's infrastructure of several hundred command-and-control servers from the inside and redirected its known command-and-control domains to law-enforcement-controlled systems.",
+      "German authorities pushed an uninstaller through the seized channels that removed Emotet from infected machines on April 25, 2021.",
     ],
     sources: [
       {
@@ -202,9 +202,9 @@ const INCIDENTS: readonly HistoricalUrlIncident[] = [
     domains: [],
     terms: ["dnc hack", "dnc phishing", "john podesta", "podesta", "tg-4127", "fake google-login", "fake google login"],
     facts: [
-      "SecureWorks tracked the Russian-linked group as TG-4127, also reported as APT28, Sofacy, Sednit, Fancy Bear, and Pawn Storm.",
-      "The group used Bitly-shortened links to hide spoofed Google login pages that harvested credentials from targets connected to Hillary Clinton's campaign and the Democratic National Committee.",
-      "SecureWorks analyzed thousands of phishing URLs and documented how the fake login pages prefilled a target's Google account name before collecting entered credentials.",
+      "SecureWorks tracked the Russian-linked group as TG-4127, also reported as APT28, Sofacy, Sednit, Fancy Bear, and Pawn Storm; CrowdStrike's Democratic National Committee investigation attributed the intrusion to the same actor.",
+      "Between March and May 2016 the group sent spear-phishing mail carrying Bitly-shortened links to spoofed Google account-login pages that harvested credentials from Democratic National Committee and Clinton campaign staff, including campaign chairman John Podesta.",
+      "SecureWorks documented nearly 4,000 such Bitly phishing links and showed how the fake login pages prefilled a target's Google account name before collecting entered credentials.",
     ],
     sources: [
       {
