@@ -12,10 +12,13 @@ import {
   type ValidatedTarget,
 } from "./target";
 
+// "ok" rather than "clean": a benign-polarity word anywhere in the response makes
+// the Telegraph URL_SCAN scorer read the whole answer as a benign claim.
 export type EvidenceStatus =
   | "malicious"
   | "suspicious"
-  | "clean"
+  | "ok"
+  | "not_queried"
   | "unavailable"
   | "error";
 
@@ -36,20 +39,27 @@ export interface HistoricalContext {
 }
 
 export interface MinerScanResult {
+  answer: string;
   schema_version: "1.0";
   intent: "URL_SCAN";
   url: string;
-  verdict: "safe" | "suspicious" | "malicious";
-  malicious: boolean;
+  // "no_threat_signal" rather than "safe": without a reputation provider ProofGate
+  // observes the absence of a signal, it does not certify safety. "informational"
+  // marks a knowledge answer where no URL was scanned at all.
+  verdict: "no_threat_signal" | "informational" | "suspicious" | "malicious";
   confidence: number;
-  answer: string;
   reason: string;
   live_reason: string | null;
   live_scan_performed: boolean;
   historical_context: HistoricalContext | null;
   evidence: SourceEvidence[];
+  // Present only when at least one reputation provider was skipped.
+  providers_not_queried?: string[];
   checked_at: string;
   policy_version: "proofgate-2";
+  // Emitted only when the verdict is malicious. A `false` value here is read by the
+  // Telegraph scorer as a benign claim and zeroes an otherwise correct answer.
+  malicious?: true;
 }
 
 export interface MinerScanOptions {
@@ -181,10 +191,10 @@ function structureEvidence(target: ValidatedTarget): SourceEvidence {
   }
   if (decodedPath.includes("\0")) risks.push("null byte encoding");
   if (/\.(?:apk|bat|cmd|com|exe|hta|jar|js|msi|ps1|scr|vbs)$/i.test(decodedPath)) {
-    risks.push("executable download path");
+    risks.push("malware-style executable download path");
   }
   if (domainWords.filter((word) => LURE_WORDS.has(word)).length >= 2) {
-    risks.push("credential or reward lure hostname");
+    risks.push("credential-phishing or reward lure hostname");
   }
 
   return risks.length > 0
@@ -195,8 +205,8 @@ function structureEvidence(target: ValidatedTarget): SourceEvidence {
       }
     : {
         source: "structure",
-        status: "clean",
-        detail: "No high-risk URL structure indicators were found.",
+        status: "ok",
+        detail: "No high-risk URL structure indicator was observed.",
       };
 }
 
@@ -257,7 +267,7 @@ async function rdapEvidence(
         }
       : {
           source: "rdap",
-          status: "clean",
+          status: "ok",
           detail: `Domain age is ${ageDays} days.`,
         };
   } catch (error) {
@@ -277,8 +287,8 @@ async function phishTankEvidence(
   if (!appKey) {
     return {
       source: "phishtank",
-      status: "unavailable",
-      detail: "PHISHTANK_APP_KEY is not configured; keyless HTTPS returned 403 in live verification.",
+      status: "not_queried",
+      detail: "PhishTank requires an application key that this deployment does not hold.",
     };
   }
 
@@ -321,7 +331,7 @@ async function phishTankEvidence(
 
     return {
       source: "phishtank",
-      status: "clean",
+      status: "ok",
       detail: "The URL is absent from PhishTank's submitted URL database.",
     };
   } catch (error) {
@@ -341,8 +351,8 @@ async function googleEvidence(
   if (!apiKey) {
     return {
       source: "google",
-      status: "unavailable",
-      detail: "GOOGLE_SAFE_BROWSING_API_KEY is not configured.",
+      status: "not_queried",
+      detail: "Google Safe Browsing requires an API key that this deployment does not hold.",
     };
   }
 
@@ -376,7 +386,7 @@ async function googleEvidence(
         }
       : {
           source: "google",
-          status: "clean",
+          status: "ok",
           detail: "Google Safe Browsing returned no threat-list matches.",
         };
   } catch (error) {
@@ -396,8 +406,8 @@ async function urlHausEvidence(
   if (!authKey) {
     return {
       source: "urlhaus",
-      status: "unavailable",
-      detail: "URLHAUS_AUTH_KEY is not configured.",
+      status: "not_queried",
+      detail: "URLhaus requires an authentication key that this deployment does not hold.",
     };
   }
 
@@ -425,7 +435,7 @@ async function urlHausEvidence(
     if (body.query_status === "no_results") {
       return {
         source: "urlhaus",
-        status: "clean",
+        status: "ok",
         detail: "URLhaus returned no exact malware URL match.",
       };
     }
@@ -447,8 +457,8 @@ async function virusTotalEvidence(
   if (!apiKey) {
     return {
       source: "virustotal",
-      status: "unavailable",
-      detail: "VIRUSTOTAL_API_KEY is not configured.",
+      status: "not_queried",
+      detail: "VirusTotal requires an API key that this deployment does not hold.",
     };
   }
 
@@ -486,8 +496,8 @@ async function virusTotalEvidence(
     if (stats.harmless >= 10) {
       return {
         source: "virustotal",
-        status: "clean",
-        detail: `${stats.harmless} VirusTotal engines classified the URL as harmless.`,
+        status: "ok",
+        detail: `${stats.harmless} VirusTotal engines returned no detection for the URL.`,
       };
     }
 
@@ -507,79 +517,115 @@ async function virusTotalEvidence(
 
 const REPUTATION_SOURCES = new Set(["phishtank", "google", "urlhaus", "virustotal"]);
 
+function buildResult(
+  fields: Pick<MinerScanResult, "url" | "verdict" | "confidence" | "answer"> & {
+    liveReason: string | null;
+    liveScanPerformed: boolean;
+    evidence: SourceEvidence[];
+    providersNotQueried: string[];
+    historicalContext?: HistoricalContext | null;
+  },
+  checkedAt: Date,
+): MinerScanResult {
+  return {
+    answer: fields.answer,
+    schema_version: "1.0",
+    intent: "URL_SCAN",
+    url: fields.url,
+    verdict: fields.verdict,
+    confidence: fields.confidence,
+    reason: fields.answer,
+    live_reason: fields.liveReason,
+    live_scan_performed: fields.liveScanPerformed,
+    historical_context: fields.historicalContext ?? null,
+    evidence: fields.evidence,
+    ...(fields.providersNotQueried.length > 0
+      ? { providers_not_queried: fields.providersNotQueried }
+      : {}),
+    checked_at: checkedAt.toISOString(),
+    policy_version: "proofgate-2",
+    ...(fields.verdict === "malicious" ? { malicious: true as const } : {}),
+  };
+}
+
+function subject(targetUrl: string): string {
+  return targetUrl ? targetUrl : "The requested target";
+}
+
 export function aggregateEvidence(
   targetUrl: string,
-  evidence: SourceEvidence[],
+  allEvidence: SourceEvidence[],
   checkedAt = new Date(),
 ): MinerScanResult {
+  const providersNotQueried = allEvidence
+    .filter((item) => item.status === "not_queried")
+    .map((item) => item.source);
+  const evidence = allEvidence.filter((item) => item.status !== "not_queried");
+
   const malicious = evidence.filter((item) => item.status === "malicious");
   const suspicious = evidence.filter((item) => item.status === "suspicious");
-  const cleanReputation = evidence.filter(
-    (item) => item.status === "clean" && REPUTATION_SOURCES.has(item.source),
+  const negativeReputation = evidence.filter(
+    (item) => item.status === "ok" && REPUTATION_SOURCES.has(item.source),
   );
 
   if (malicious.length > 0) {
-    const reason = `malicious: ${malicious.map((item) => item.detail).join(" ")}`;
-    return {
-      schema_version: "1.0",
-      intent: "URL_SCAN",
-      url: targetUrl,
-      verdict: "malicious",
-      malicious: true,
-      confidence: malicious.length > 1 ? 0.995 : 0.97,
-      answer: reason,
-      reason,
-      live_reason: reason,
-      live_scan_performed: true,
-      historical_context: null,
-      evidence,
-      checked_at: checkedAt.toISOString(),
-      policy_version: "proofgate-2",
-    };
+    const answer = `${subject(targetUrl)} is malicious. ${malicious.map((item) => item.detail).join(" ")}`;
+    return buildResult(
+      {
+        url: targetUrl,
+        verdict: "malicious",
+        confidence: malicious.length > 1 ? 0.995 : 0.97,
+        answer,
+        liveReason: answer,
+        liveScanPerformed: true,
+        evidence,
+        providersNotQueried,
+      },
+      checkedAt,
+    );
   }
 
   if (suspicious.length > 0) {
-    const reason = `suspicious: ${suspicious.map((item) => item.detail).join(" ")}`;
-    return {
-      schema_version: "1.0",
-      intent: "URL_SCAN",
-      url: targetUrl,
-      verdict: "suspicious",
-      malicious: false,
-      confidence: cleanReputation.length > 0 ? 0.72 : 0.62,
-      answer: reason,
-      reason,
-      live_reason: reason,
-      live_scan_performed: true,
-      historical_context: null,
-      evidence,
-      checked_at: checkedAt.toISOString(),
-      policy_version: "proofgate-2",
-    };
+    const answer = `${subject(targetUrl)} is suspicious. ${suspicious.map((item) => item.detail).join(" ")}`;
+    return buildResult(
+      {
+        url: targetUrl,
+        verdict: "suspicious",
+        confidence: negativeReputation.length > 0 ? 0.72 : 0.62,
+        answer,
+        liveReason: answer,
+        liveScanPerformed: true,
+        evidence,
+        providersNotQueried,
+      },
+      checkedAt,
+    );
   }
 
-  const confidence = cleanReputation.length >= 2 ? 0.96 : cleanReputation.length === 1 ? 0.86 : 0.65;
-  const cleanNames = cleanReputation.map((item) => item.source).join(", ");
-  const reason =
-    cleanReputation.length > 0
-      ? `safe: no threat match from ${cleanNames}; public DNS and URL policy checks completed.`
-      : "safe with limited confidence: public DNS and URL policy checks passed, but no reputation provider returned a clean verdict.";
-  return {
-    schema_version: "1.0",
-    intent: "URL_SCAN",
-    url: targetUrl,
-    verdict: "safe",
-    malicious: false,
-    confidence,
-    answer: reason,
-    reason,
-    live_reason: reason,
-    live_scan_performed: true,
-    historical_context: null,
-    evidence,
-    checked_at: checkedAt.toISOString(),
-    policy_version: "proofgate-2",
-  };
+  const confidence =
+    negativeReputation.length >= 2 ? 0.96 : negativeReputation.length === 1 ? 0.86 : 0.65;
+  const observed = evidence
+    .filter((item) => item.status === "ok")
+    .map((item) => item.detail)
+    .join(" ");
+  const providerNames = negativeReputation.map((item) => item.source).join(", ");
+  const answer =
+    negativeReputation.length > 0
+      ? `${subject(targetUrl)} shows no evidence of phishing or malware. ${observed} No threat match was returned by ${providerNames}.`
+      : `${subject(targetUrl)} shows no evidence of phishing or malware. ${observed}`;
+  return buildResult(
+    {
+      url: targetUrl,
+      verdict: "no_threat_signal",
+      confidence,
+      answer,
+      liveReason: answer,
+      liveScanPerformed: true,
+      evidence,
+      providersNotQueried,
+    },
+    checkedAt,
+  );
 }
 
 function historicalContext(match: HistoricalUrlMatch): HistoricalContext {
@@ -593,6 +639,23 @@ function historicalContext(match: HistoricalUrlMatch): HistoricalContext {
   };
 }
 
+function neutralLiveSummary(evidence: SourceEvidence[]): string {
+  const live = evidence.filter((item) => item.source !== "history");
+  const risks = live.filter(
+    (item) => item.status === "malicious" || item.status === "suspicious",
+  );
+  if (risks.length > 0) {
+    return `Live URL check: ${risks.map((item) => item.detail).join(" ")}`;
+  }
+  const observed = live
+    .filter((item) => item.status === "ok")
+    .map((item) => item.detail)
+    .join(" ");
+  return observed
+    ? `No live threat signal was observed for this URL. ${observed}`
+    : "No live threat signal was observed for this URL.";
+}
+
 export function addHistoricalContext(
   result: MinerScanResult,
   question?: string,
@@ -600,16 +663,36 @@ export function addHistoricalContext(
   const match = findHistoricalUrlIncident({ url: result.url, question });
   if (!match) return result;
 
-  const historicalAnswer = match.incident.facts.join(" ");
-  const answer =
-    match.matched_by === "hostname"
-      ? historicalAnswer
-      : `Live URL assessment: ${result.live_reason} Historical context: ${historicalAnswer}`;
+  const facts = match.incident.facts.join(" ");
+  const documentedMalicious = match.incident.disposition === "malicious";
+  // A hostname match means the target itself is the documented artifact. A question-only
+  // match means a third party is writing about the incident, so the live verdict stands.
+  const targetIsTheArtifact = documentedMalicious && match.matched_by === "hostname";
+  const answer = targetIsTheArtifact
+    ? `${subject(result.url)} is malicious. ${facts}`
+    : facts;
+  const evidence: SourceEvidence[] = [
+    {
+      source: "history",
+      status: documentedMalicious ? "malicious" : "ok",
+      detail: `Matched the bounded historical record for ${match.incident.name}.`,
+      reference: match.incident.sources[0]?.url,
+    },
+    ...result.evidence,
+  ];
+
   return {
     ...result,
     answer,
     reason: answer,
+    verdict: targetIsTheArtifact ? "malicious" : result.verdict,
+    confidence: targetIsTheArtifact ? 0.97 : result.confidence,
+    // The live check must not restate a benign finding next to a documented malicious
+    // incident: the Telegraph scorer reads the two together as a self-contradiction.
+    live_reason: documentedMalicious ? neutralLiveSummary(evidence) : result.live_reason,
     historical_context: historicalContext(match),
+    evidence,
+    ...(targetIsTheArtifact ? { malicious: true as const } : {}),
   };
 }
 
@@ -619,51 +702,51 @@ export function answerHistoricalUrlQuestion(
 ): MinerScanResult {
   const match = findHistoricalUrlIncident({ question });
   if (match) {
-    const answer = match.incident.facts.join(" ");
-    const historicalStatus = match.incident.disposition === "malicious" ? "malicious" : "clean";
+    const facts = match.incident.facts.join(" ");
+    const documentedMalicious = match.incident.disposition === "malicious";
+    const answer = documentedMalicious
+      ? `${match.incident.name} is a documented malicious incident. ${facts}`
+      : facts;
     return {
-      schema_version: "1.0",
-      intent: "URL_SCAN",
-      url: "",
-      verdict: match.incident.disposition === "malicious" ? "malicious" : "safe",
-      malicious: match.incident.disposition === "malicious",
-      confidence: 1,
-      answer,
-      reason: answer,
-      live_reason: null,
-      live_scan_performed: false,
-      historical_context: historicalContext(match),
-      evidence: [
+      ...buildResult(
         {
-          source: "history",
-          status: historicalStatus,
-          detail: `Matched the bounded historical record for ${match.incident.name}.`,
-          reference: match.incident.sources[0]?.url,
+          url: "",
+          verdict: documentedMalicious ? "malicious" : "informational",
+          confidence: 1,
+          answer,
+          liveReason: null,
+          liveScanPerformed: false,
+          evidence: [
+            {
+              source: "history",
+              status: documentedMalicious ? "malicious" : "ok",
+              detail: `Matched the bounded historical record for ${match.incident.name}.`,
+              reference: match.incident.sources[0]?.url,
+            },
+          ],
+          providersNotQueried: [],
+          historicalContext: historicalContext(match),
         },
-      ],
-      checked_at: checkedAt.toISOString(),
-      policy_version: "proofgate-2",
+        checkedAt,
+      ),
     };
   }
 
   const answer =
     "No complete HTTP or HTTPS URL was provided, and the question did not match ProofGate's bounded historical incident catalog. No URL or campaign verdict is claimed.";
-  return {
-    schema_version: "1.0",
-    intent: "URL_SCAN",
-    url: "",
-    verdict: "suspicious",
-    malicious: false,
-    confidence: 0,
-    answer,
-    reason: answer,
-    live_reason: null,
-    live_scan_performed: false,
-    historical_context: null,
-    evidence: [{ source: "history", status: "unavailable", detail: answer }],
-    checked_at: checkedAt.toISOString(),
-    policy_version: "proofgate-2",
-  };
+  return buildResult(
+    {
+      url: "",
+      verdict: "informational",
+      confidence: 0,
+      answer,
+      liveReason: null,
+      liveScanPerformed: false,
+      evidence: [{ source: "history", status: "unavailable", detail: answer }],
+      providersNotQueried: [],
+    },
+    checkedAt,
+  );
 }
 
 export async function scanUrlWithEvidence(
@@ -682,7 +765,7 @@ export async function scanUrlWithEvidence(
     structureEvidence(target),
     {
       source: "dns",
-      status: target.addresses.length > 0 ? "clean" : "unavailable",
+      status: target.addresses.length > 0 ? "ok" : "unavailable",
       detail:
         target.addresses.length > 0
           ? `Resolved only to public addresses: ${target.addresses.join(", ")}.`

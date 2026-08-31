@@ -18,13 +18,13 @@ function evidence(
 }
 
 describe("Miner evidence aggregation", () => {
-  it("lets one authoritative threat match override clean votes", () => {
+  it("lets one authoritative threat match override no-signal votes", () => {
     const result = aggregateEvidence(
       "https://example.com/",
       [
-        evidence("dns", "clean"),
-        evidence("rdap", "clean"),
-        evidence("phishtank", "clean"),
+        evidence("dns", "ok"),
+        evidence("rdap", "ok"),
+        evidence("phishtank", "ok"),
         evidence("google", "malicious", "Safe Browsing matched SOCIAL_ENGINEERING."),
       ],
       checkedAt,
@@ -44,38 +44,78 @@ describe("Miner evidence aggregation", () => {
     ).toBe(0.995);
   });
 
-  it("does not let clean sources erase a structural warning", () => {
-    expect(
-      aggregateEvidence(
-        "http://example.com/file.exe",
-        [evidence("structure", "suspicious"), evidence("phishtank", "clean")],
-        checkedAt,
-      ),
-    ).toMatchObject({ verdict: "suspicious", malicious: false, confidence: 0.72 });
+  it("does not let no-signal sources erase a structural warning", () => {
+    const result = aggregateEvidence(
+      "http://example.com/file.exe",
+      [evidence("structure", "suspicious"), evidence("phishtank", "ok")],
+      checkedAt,
+    );
+    expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.72 });
+    expect(result.malicious).toBeUndefined();
   });
 
   it("requires a reputation source for an allow-grade confidence", () => {
     const noReputation = aggregateEvidence(
       "https://example.com/",
-      [evidence("dns", "clean"), evidence("rdap", "clean")],
+      [evidence("dns", "ok"), evidence("rdap", "ok")],
       checkedAt,
     );
     const oneReputation = aggregateEvidence(
       "https://example.com/",
-      [evidence("dns", "clean"), evidence("rdap", "clean"), evidence("phishtank", "clean")],
+      [evidence("dns", "ok"), evidence("rdap", "ok"), evidence("phishtank", "ok")],
       checkedAt,
     );
 
-    expect(noReputation).toMatchObject({ verdict: "safe", confidence: 0.65 });
-    expect(oneReputation).toMatchObject({ verdict: "safe", confidence: 0.86 });
+    expect(noReputation).toMatchObject({ verdict: "no_threat_signal", confidence: 0.65 });
+    expect(oneReputation).toMatchObject({ verdict: "no_threat_signal", confidence: 0.86 });
+  });
+
+  it("never emits a benign claim word that the Telegraph scorer reads as a contradiction", () => {
+    const results = [
+      aggregateEvidence("https://example.com/", [evidence("dns", "ok")], checkedAt),
+      aggregateEvidence(
+        "https://example.com/",
+        [evidence("structure", "suspicious")],
+        checkedAt,
+      ),
+      aggregateEvidence("https://example.com/", [evidence("google", "malicious")], checkedAt),
+      answerHistoricalUrlQuestion("What is documented about Necurs?", checkedAt),
+    ];
+
+    for (const result of results) {
+      expect(JSON.stringify(result)).not.toMatch(/\b(safe|clean|benign|legitimate|harmless)\b/i);
+    }
+  });
+
+  it("reports unqueried reputation providers as a plain list instead of prose evidence", async () => {
+    const result = await scanUrlWithEvidence("https://example.com", {
+      fetcher: async (input) => {
+        if (String(input).startsWith("https://rdap.org/")) {
+          return Response.json({
+            events: [{ eventAction: "registration", eventDate: "1995-08-14T00:00:00Z" }],
+          });
+        }
+        throw new Error(`Unexpected request ${String(input)}`);
+      },
+      lookup: async () => ["93.184.216.34"],
+      now: checkedAt,
+    });
+
+    expect(result.providers_not_queried).toEqual([
+      "phishtank",
+      "google",
+      "urlhaus",
+      "virustotal",
+    ]);
+    expect(result.evidence.some((item) => item.status === "not_queried")).toBe(false);
   });
 });
 
 describe("Miner provider contracts", () => {
   it.each([
-    ["https://example.com/download%2Eexe", "executable download path"],
+    ["https://example.com/download%2Eexe", "malware-style executable download path"],
     ["https://example.com/download.exe%00.txt", "null byte encoding"],
-    ["https://free-prize-claim.info/win", "credential or reward lure hostname"],
+    ["https://free-prize-claim.info/win", "credential-phishing or reward lure hostname"],
     ["https://example.com/bad%encoding", "malformed URL encoding"],
   ])("flags deterministic structural risk for %s", async (url, detail) => {
     const result = await scanUrlWithEvidence(url, {
@@ -91,7 +131,8 @@ describe("Miner provider contracts", () => {
       now: checkedAt,
     });
 
-    expect(result).toMatchObject({ verdict: "suspicious", malicious: false });
+    expect(result).toMatchObject({ verdict: "suspicious" });
+    expect(result.malicious).toBeUndefined();
     expect(result.reason).toContain(detail);
   });
 
@@ -109,7 +150,8 @@ describe("Miner provider contracts", () => {
       now: checkedAt,
     });
 
-    expect(result).toMatchObject({ verdict: "suspicious", malicious: false, confidence: 0.62 });
+    expect(result).toMatchObject({ verdict: "suspicious", confidence: 0.62 });
+    expect(result.malicious).toBeUndefined();
     expect(result.evidence.find((item) => item.source === "dns")).toMatchObject({
       status: "unavailable",
     });
@@ -133,7 +175,7 @@ describe("Miner provider contracts", () => {
     });
 
     expect(result.evidence.find((item) => item.source === "structure")).toMatchObject({
-      status: "clean",
+      status: "ok",
     });
   });
 
@@ -222,7 +264,8 @@ describe("Miner provider contracts", () => {
       virusTotalApiKey: "vt-key",
     });
 
-    expect(result).toMatchObject({ verdict: "safe", malicious: false, confidence: 0.96 });
+    expect(result).toMatchObject({ verdict: "no_threat_signal", confidence: 0.96 });
+    expect(result.malicious).toBeUndefined();
     expect(
       requests.find((request) => request.url.startsWith("https://rdap.org/"))?.init?.headers,
     ).toMatchObject({
@@ -267,10 +310,10 @@ describe("Miner historical answers", () => {
 
     expect(result).toMatchObject({
       confidence: 0,
-      malicious: false,
       live_scan_performed: false,
       historical_context: null,
     });
+    expect(result.malicious).toBeUndefined();
     expect(result.answer).toContain("No URL or campaign verdict is claimed");
   });
 
@@ -290,14 +333,13 @@ describe("Miner historical answers", () => {
     });
 
     expect(result).toMatchObject({
-      verdict: "safe",
-      malicious: false,
+      verdict: "no_threat_signal",
       live_scan_performed: true,
       historical_context: { id: "mirai", matched_by: "question" },
     });
-    expect(result.live_reason).toContain("safe with limited confidence");
-    expect(result.answer).toContain("Live URL assessment: safe");
-    expect(result.answer).toContain("Historical context:");
+    expect(result.malicious).toBeUndefined();
+    expect(result.answer).toContain("Anna-senpai");
+    expect(result.answer).not.toMatch(/\bsafe\b/i);
   });
 
   it("does not let historical context erase a live structural warning", async () => {
@@ -319,6 +361,6 @@ describe("Miner historical answers", () => {
       verdict: "suspicious",
       historical_context: { id: "emotet", matched_by: "question" },
     });
-    expect(result.live_reason).toContain("executable download path");
+    expect(result.live_reason).toContain("malware-style executable download path");
   });
 });

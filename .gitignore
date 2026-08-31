@@ -25,6 +25,9 @@
 # local ProofGate audit data
 /data/
 
+# cached copy of the live Telegraph champion scoring module
+/tmp-champion/
+
 # misc
 .DS_Store
 *.pem

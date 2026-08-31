@@ -45,10 +45,10 @@ describe("URL_SCAN route", () => {
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
       confidence: 0,
-      malicious: false,
       live_scan_performed: false,
       historical_context: null,
     });
+    expect(body.malicious).toBeUndefined();
     expect(body.answer).toContain("No URL or campaign verdict is claimed");
   });
 

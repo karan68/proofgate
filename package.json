@@ -24,6 +24,7 @@
     "miner:update:check": "tsx scripts/register-miner.ts --update",
     "miner:update:submit": "tsx scripts/register-miner.ts --update --submit",
     "history:replay": "tsx scripts/replay-url-history.ts",
+    "score:champion": "tsx scripts/score-against-champion.ts",
     "portal:update": "tsx scripts/update-portal-submission.ts",
     "wasm:test": "cargo test --manifest-path wasm-scorer/Cargo.toml",
     "wasm:verify": "node scripts/package-wasm-scorer.mjs public/wasm/proofgate-url-scorer.wasm --verify-only",
